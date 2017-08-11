@@ -36,11 +36,6 @@ ed25519_SOURCES = \
 	ed25519/sign.c \
 	ed25519/verify.c
 
-chacha_poly1305_SOURCES = \
-	chacha-poly1305/chacha.c chacha-poly1305/chacha.h \
-	chacha-poly1305/chacha-poly1305.c chacha-poly1305/chacha-poly1305.h \
-	chacha-poly1305/poly1305.c chacha-poly1305/poly1305.h
-
 tincd_SOURCES = \
 	address_cache.c address_cache.h \
 	autoconnect.c autoconnect.h \
@@ -102,8 +97,7 @@ tincd_SOURCES = \
 	version.c version.h \
 	ed25519/ecdh.c \
 	ed25519/ecdsa.c \
-	$(ed25519_SOURCES) \
-	$(chacha_poly1305_SOURCES)
+	$(ed25519_SOURCES)
 
 tinc_SOURCES = \
 	dropin.c dropin.h \
@@ -124,8 +118,7 @@ tinc_SOURCES = \
 	ed25519/ecdh.c \
 	ed25519/ecdsa.c \
 	ed25519/ecdsagen.c \
-	$(ed25519_SOURCES) \
-	$(chacha_poly1305_SOURCES)
+	$(ed25519_SOURCES)
 
 sptps_test_SOURCES = \
 	logger.c logger.h \
@@ -134,8 +127,7 @@ sptps_test_SOURCES = \
 	utils.c utils.h \
 	ed25519/ecdh.c \
 	ed25519/ecdsa.c \
-	$(ed25519_SOURCES) \
-	$(chacha_poly1305_SOURCES)
+	$(ed25519_SOURCES)
 
 sptps_keypair_SOURCES = \
 	sptps_keypair.c \
@@ -151,8 +143,7 @@ sptps_speed_SOURCES = \
 	ed25519/ecdh.c \
 	ed25519/ecdsa.c \
 	ed25519/ecdsagen.c \
-	$(ed25519_SOURCES) \
-	$(chacha_poly1305_SOURCES)
+	$(ed25519_SOURCES)
 
 ## Conditionally compile device drivers
 
