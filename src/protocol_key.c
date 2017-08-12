@@ -37,7 +37,6 @@
 static bool mykeyused = false;
 
 void send_key_changed(void) {
-#ifndef DISABLE_LEGACY
 	send_request(everyone, "%d %x %s", KEY_CHANGED, rand(), myself->name);
 
 	/* Immediately send new keys to directly connected nodes to keep UDP mappings alive */
@@ -46,8 +45,6 @@ void send_key_changed(void) {
 		if(c->edge && c->node && c->node->status.reachable && !c->node->status.sptps) {
 			send_ans_key(c->node);
 		}
-
-#endif
 
 	/* Force key exchange for connections using SPTPS */
 
@@ -322,9 +319,6 @@ bool send_ans_key(node_t *to) {
 		abort();
 	}
 
-#ifdef DISABLE_LEGACY
-	return false;
-#else
 	size_t keylen = myself->incipher ? cipher_keylength(myself->incipher) : 1;
 	char key[keylen * 2 + 1];
 
@@ -378,7 +372,6 @@ bool send_ans_key(node_t *to) {
 	                    digest_get_nid(to->indigest),
 	                    (int)digest_length(to->indigest),
 	                    to->incompression);
-#endif
 }
 
 bool ans_key_h(connection_t *c, const char *request) {
@@ -445,11 +438,9 @@ bool ans_key_h(connection_t *c, const char *request) {
 		return send_request(to->nexthop->connection, "%s", request);
 	}
 
-#ifndef DISABLE_LEGACY
 	/* Don't use key material until every check has passed. */
 	cipher_close(from->outcipher);
 	digest_close(from->outdigest);
-#endif
 
 	if(!from->status.sptps) {
 		from->status.validkey = false;
@@ -495,10 +486,6 @@ bool ans_key_h(connection_t *c, const char *request) {
 		return true;
 	}
 
-#ifdef DISABLE_LEGACY
-	logger(DEBUG_ALWAYS, LOG_ERR, "Node %s (%s) uses legacy protocol!", from->name, from->hostname);
-	return false;
-#else
 	/* Check and lookup cipher and digest algorithms */
 
 	if(cipher) {
@@ -553,5 +540,4 @@ bool ans_key_h(connection_t *c, const char *request) {
 	}
 
 	return true;
-#endif
 }

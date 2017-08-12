@@ -124,12 +124,8 @@ static void usage(bool status) {
 		       "  restart [tincd options]    Restart tincd.\n"
 		       "  reload                     Partially reload configuration of running tincd.\n"
 		       "  pid                        Show PID of currently running tincd.\n"
-#ifdef DISABLE_LEGACY
-		       "  generate-keys              Generate a new Ed25519 public/private keypair.\n"
-#else
 		       "  generate-keys [bits]       Generate new RSA and Ed25519 public/private keypairs.\n"
 		       "  generate-rsa-keys [bits]   Generate a new RSA public/private keypair.\n"
-#endif
 		       "  generate-ed25519-keys      Generate a new Ed25519 public/private keypair.\n"
 		       "  dump                       Dump a list of one of the following things:\n"
 		       "    [reachable] nodes        - all known nodes in the VPN\n"
@@ -466,7 +462,6 @@ error:
 	return false;
 }
 
-#ifndef DISABLE_LEGACY
 /*
   Generate a public/private RSA keypair, and ask for a file to store
   them in.
@@ -541,7 +536,6 @@ error:
 	rsa_free(key);
 	return false;
 }
-#endif
 
 char buffer[4096];
 size_t blen = 0;
@@ -2230,15 +2224,7 @@ static int cmd_init(int argc, char *argv[]) {
 	fprintf(f, "Name = %s\n", name);
 	fclose(f);
 
-#ifndef DISABLE_LEGACY
-
-	if(!rsa_keygen(2048, false)) {
-		return 1;
-	}
-
-#endif
-
-	if(!ed25519_keygen(false)) {
+	if(!rsa_keygen(2048, false) || !ed25519_keygen(false)) {
 		return 1;
 	}
 
@@ -2266,14 +2252,7 @@ static int cmd_init(int argc, char *argv[]) {
 
 }
 
-static int cmd_generate_keys(int argc, char *argv[]) {
-#ifdef DISABLE_LEGACY
-
-	if(argc > 1) {
-#else
-
 	if(argc > 2) {
-#endif
 		fprintf(stderr, "Too many arguments!\n");
 		return 1;
 	}
@@ -2282,13 +2261,9 @@ static int cmd_generate_keys(int argc, char *argv[]) {
 		name = get_my_name(false);
 	}
 
-#ifndef DISABLE_LEGACY
-
 	if(!rsa_keygen(argc > 1 ? atoi(argv[1]) : 2048, true)) {
 		return 1;
 	}
-
-#endif
 
 	if(!ed25519_keygen(true)) {
 		return 1;
@@ -2297,7 +2272,6 @@ static int cmd_generate_keys(int argc, char *argv[]) {
 	return 0;
 }
 
-#ifndef DISABLE_LEGACY
 static int cmd_generate_rsa_keys(int argc, char *argv[]) {
 	if(argc > 2) {
 		fprintf(stderr, "Too many arguments!\n");
@@ -2310,7 +2284,6 @@ static int cmd_generate_rsa_keys(int argc, char *argv[]) {
 
 	return !rsa_keygen(argc > 1 ? atoi(argv[1]) : 2048, true);
 }
-#endif
 
 static int cmd_generate_ed25519_keys(int argc, char *argv[]) {
 	if(argc > 1) {
@@ -2958,9 +2931,7 @@ static const struct {
 	{"set", cmd_config},
 	{"init", cmd_init},
 	{"generate-keys", cmd_generate_keys},
-#ifndef DISABLE_LEGACY
 	{"generate-rsa-keys", cmd_generate_rsa_keys},
-#endif
 	{"generate-ed25519-keys", cmd_generate_ed25519_keys},
 	{"help", cmd_help},
 	{"version", cmd_version},

@@ -45,8 +45,6 @@
 #include "utils.h"
 #include "xalloc.h"
 
-#include "ed25519/sha512.h"
-
 int invitation_lifetime;
 ecdsa_t *invitation_key = NULL;
 
@@ -236,13 +234,17 @@ static bool receive_invitation_sptps(void *handle, uint8_t type, const void *dat
 	}
 
 	// Recover the filename from the cookie and the key
+	digest_t *digest = digest_open_by_name("sha256", 18);
+	if(!digest)
+		abort();
 	char *fingerprint = ecdsa_get_base64_public_key(invitation_key);
 	char hashbuf[18 + strlen(fingerprint)];
-	char cookie[64];
+	char cookie[25];
 	memcpy(hashbuf, data, 18);
 	memcpy(hashbuf + 18, fingerprint, sizeof(hashbuf) - 18);
-	sha512(hashbuf, sizeof(hashbuf), cookie);
+	digest_create(digest, hashbuf, sizeof(hashbuf), cookie);
 	b64encode_urlsafe(cookie, cookie, 18);
+	digest_close(digest);
 	free(fingerprint);
 
 	char filename[PATH_MAX], usedname[PATH_MAX];
@@ -471,10 +473,6 @@ bool id_h(connection_t *c, const char *request) {
 }
 
 bool send_metakey(connection_t *c) {
-#ifdef DISABLE_LEGACY
-	return false;
-#else
-
 	if(!myself->connection->rsa) {
 		logger(DEBUG_CONNECTIONS, LOG_ERR, "Peer %s (%s) uses legacy protocol which we don't support", c->name, c->hostname);
 		return false;
@@ -564,14 +562,9 @@ bool send_metakey(connection_t *c) {
 
 	c->status.encryptout = true;
 	return result;
-#endif
 }
 
 bool metakey_h(connection_t *c, const char *request) {
-#ifdef DISABLE_LEGACY
-	return false;
-#else
-
 	if(!myself->connection->rsa) {
 		return false;
 	}
@@ -637,13 +630,9 @@ bool metakey_h(connection_t *c, const char *request) {
 	c->allow_request = CHALLENGE;
 
 	return send_challenge(c);
-#endif
 }
 
 bool send_challenge(connection_t *c) {
-#ifdef DISABLE_LEGACY
-	return false;
-#else
 	const size_t len = rsa_size(c->rsa);
 	char buffer[len * 2 + 1];
 
@@ -662,14 +651,9 @@ bool send_challenge(connection_t *c) {
 	/* Send the challenge */
 
 	return send_request(c, "%d %s", CHALLENGE, buffer);
-#endif
 }
 
 bool challenge_h(connection_t *c, const char *request) {
-#ifdef DISABLE_LEGACY
-	return false;
-#else
-
 	if(!myself->connection->rsa) {
 		return false;
 	}
@@ -710,13 +694,9 @@ bool challenge_h(connection_t *c, const char *request) {
 	c->allow_request = CHAL_REPLY;
 
 	return send_request(c, "%d %s", CHAL_REPLY, buffer);
-#endif
 }
 
 bool chal_reply_h(connection_t *c, const char *request) {
-#ifdef DISABLE_LEGACY
-	return false;
-#else
 	char hishash[MAX_STRING_SIZE];
 
 	if(sscanf(request, "%*d " MAX_STRING, hishash) != 1) {
@@ -753,13 +733,9 @@ bool chal_reply_h(connection_t *c, const char *request) {
 	c->allow_request = ACK;
 
 	return send_ack(c);
-#endif
 }
 
 static bool send_upgrade(connection_t *c) {
-#ifdef DISABLE_LEGACY
-	return false;
-#else
 	/* Special case when protocol_minor is 1: the other end is Ed25519 capable,
 	 * but doesn't know our key yet. So send it now. */
 
@@ -772,7 +748,6 @@ static bool send_upgrade(connection_t *c) {
 	bool result = send_request(c, "%d %s", ACK, pubkey);
 	free(pubkey);
 	return result;
-#endif
 }
 
 bool send_ack(connection_t *c) {

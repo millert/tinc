@@ -236,28 +236,9 @@ sptps_test_SOURCES += \
 	gcrypt/cipher.c \
 	gcrypt/crypto.c \
 	gcrypt/digest.c gcrypt/digest.h \
+	gcrypt/ecdh.c \
+	gcrypt/ecdsa.c \
 	gcrypt/prf.c
-sptps_keypair_SOURCES += \
-	openssl/crypto.c
-sptps_speed_SOURCES += \
-	openssl/crypto.c \
-	openssl/digest.c openssl/digest.h \
-	openssl/prf.c
-else
-tincd_SOURCES += \
-	nolegacy/crypto.c \
-	nolegacy/prf.c
-tinc_SOURCES += \
-	nolegacy/crypto.c \
-	nolegacy/prf.c
-sptps_test_SOURCES += \
-	nolegacy/crypto.c \
-	nolegacy/prf.c
-sptps_keypair_SOURCES += \
-	nolegacy/crypto.c
-sptps_speed_SOURCES += \
-	nolegacy/crypto.c \
-	nolegacy/prf.c
 endif
 endif
 
