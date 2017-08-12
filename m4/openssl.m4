@@ -35,7 +35,7 @@ AC_DEFUN([tinc_OPENSSL],
      LDFLAGS="$LDFLAGS -L$withval"]
   )
 
-  AC_CHECK_HEADERS([openssl/evp.h openssl/rsa.h openssl/rand.h openssl/err.h openssl/sha.h openssl/pem.h openssl/engine.h],
+  AC_CHECK_HEADERS([openssl/evp.h openssl/rsa.h openssl/rand.h openssl/err.h openssl/sha.h openssl/pem.h openssl/engine.h openssl/ecdh.h openssl/ec.h],
     [],
     [AC_MSG_ERROR([LibreSSL/OpenSSL header files not found.]); break]
   )
@@ -45,11 +45,11 @@ AC_DEFUN([tinc_OPENSSL],
     [AC_MSG_ERROR([LibreSSL/OpenSSL libraries not found.])]
   )
 
-  AC_CHECK_FUNCS([RAND_bytes EVP_EncryptInit_ex EVP_CIPHER_CTX_new], ,
+  AC_CHECK_FUNCS([RAND_bytes EVP_EncryptInit_ex ECDH_compute_key ECDSA_verify EVP_CIPHER_CTX_new], ,
     [AC_MSG_ERROR([Missing LibreSSL/OpenSSL functionality, make sure you have installed the latest version.]); break],
   )
 
-  AC_CHECK_DECLS([OpenSSL_add_all_algorithms EVP_aes_256_cfb], ,
+  AC_CHECK_DECLS([OpenSSL_add_all_algorithms EVP_CTRL_GCM_GET_TAG EVP_aes_256_cfb], ,
     [AC_MSG_ERROR([Missing LibreSSL/OpenSSL functionality, make sure you have installed the latest version.]); break],
     [#include <openssl/evp.h>]
   )

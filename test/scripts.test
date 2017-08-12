@@ -35,7 +35,7 @@ echo foo-started >>$OUT
 # Invite client node
 
 url=`$tinc -n netname2 $c1 invite bar`
-file=`cd $d1/invitations; ls | grep -v ed25519_key.priv`
+file=`cd $d1/invitations; ls | grep -v ecdsa_key.priv`
 echo bar-invited >>$OUT
 $tinc -n netname3 $c2 join $url
 echo bar-joined >>$OUT

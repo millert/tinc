@@ -124,9 +124,9 @@ static void usage(bool status) {
 				"  restart [tincd options]    Restart tincd.\n"
 				"  reload                     Partially reload configuration of running tincd.\n"
 				"  pid                        Show PID of currently running tincd.\n"
-				"  generate-keys [bits]       Generate new RSA and Ed25519 public/private keypairs.\n"
+				"  generate-keys [bits]       Generate new RSA and ECDSA public/private keypairs.\n"
 				"  generate-rsa-keys [bits]   Generate a new RSA public/private keypair.\n"
-				"  generate-ed25519-keys      Generate a new Ed25519 public/private keypair.\n"
+				"  generate-ecdsa-keys        Generate a new ECDSA public/private keypair.\n"
 				"  dump                       Dump a list of one of the following things:\n"
 				"    [reachable] nodes        - all known nodes in the VPN\n"
 				"    edges                    - all known connections in the VPN\n"
@@ -268,19 +268,19 @@ static void disable_old_keys(const char *filename, const char *what) {
 
 	while(fgets(buf, sizeof buf, r)) {
 		if(!block && !strncmp(buf, "-----BEGIN ", 11)) {
-			if((strstr(buf, " ED25519 ") && strstr(what, "Ed25519")) || (strstr(buf, " RSA ") && strstr(what, "RSA"))) {
+			if((strstr(buf, " EC ") && strstr(what, "ECDSA")) || (strstr(buf, " RSA ") && strstr(what, "RSA"))) {
 				disabled = true;
 				block = true;
 			}
 		}
 
-		bool ed25519pubkey = !strncasecmp(buf, "Ed25519PublicKey", 16) && strchr(" \t=", buf[16]) && strstr(what, "Ed25519");
+		bool ecdsapubkey = !strncasecmp(buf, "ECDSAPublicKey", 14) && strchr(" \t=", buf[16]) && strstr(what, "ECDSA");
 
-		if(ed25519pubkey)
+		if(ecdsapubkey)
 			disabled = true;
 
 		if(w) {
-			if(block || ed25519pubkey)
+			if(block || ecdsapubkey)
 				fputc('#', w);
 			if(fputs(buf, w) < 0) {
 				error = true;
@@ -377,15 +377,15 @@ static FILE *ask_and_open(const char *filename, const char *what, const char *mo
 }
 
 /*
-  Generate a public/private Ed25519 keypair, and ask for a file to store
+  Generate a public/private ECDSA keypair, and ask for a file to store
   them in.
 */
-static bool ed25519_keygen(bool ask) {
+static bool ecdsa_keygen(bool ask) {
 	ecdsa_t *key;
 	FILE *f;
 	char fname[PATH_MAX];
 
-	fprintf(stderr, "Generating Ed25519 keypair:\n");
+	fprintf(stderr, "Generating ECDSA keypair:\n");
 
 	if(!(key = ecdsa_generate())) {
 		fprintf(stderr, "Error during key generation!\n");
@@ -393,8 +393,8 @@ static bool ed25519_keygen(bool ask) {
 	} else
 		fprintf(stderr, "Done.\n");
 
-	snprintf(fname, sizeof fname, "%s" SLASH "ed25519_key.priv", confbase);
-	f = ask_and_open(fname, "private Ed25519 key", "a", ask, 0600);
+	snprintf(fname, sizeof fname, "%s" SLASH "ecdsa_key.priv", confbase);
+	f = ask_and_open(fname, "private ECDSA key", "a", ask, 0600);
 
 	if(!f)
 		goto error;
@@ -409,15 +409,15 @@ static bool ed25519_keygen(bool ask) {
 	if(name)
 		snprintf(fname, sizeof fname, "%s" SLASH "hosts" SLASH "%s", confbase, name);
 	else
-		snprintf(fname, sizeof fname, "%s" SLASH "ed25519_key.pub", confbase);
+		snprintf(fname, sizeof fname, "%s" SLASH "ecdsa_key.pub", confbase);
 
-	f = ask_and_open(fname, "public Ed25519 key", "a", ask, 0666);
+	f = ask_and_open(fname, "public ECDSA key", "a", ask, 0666);
 
 	if(!f)
 		return false;
 
 	char *pubkey = ecdsa_get_base64_public_key(key);
-	fprintf(f, "Ed25519PublicKey = %s\n", pubkey);
+	fprintf(f, "ECDSAPublicKey = %s\n", pubkey);
 	free(pubkey);
 
 	fclose(f);
@@ -1454,7 +1454,7 @@ ecdsa_t *get_pubkey(FILE *f) {
 		if(!rstrip(value))
 			continue;
 		buf[len] = 0;
-		if(strcasecmp(buf, "Ed25519PublicKey"))
+		if(strcasecmp(buf, "ECDSAPublicKey"))
 			continue;
 		if(*value)
 			return ecdsa_set_base64_public_key(value);
@@ -1477,7 +1477,7 @@ const var_t variables[] = {
 	{"DeviceStandby", VAR_SERVER},
 	{"DeviceType", VAR_SERVER},
 	{"DirectOnly", VAR_SERVER},
-	{"Ed25519PrivateKeyFile", VAR_SERVER},
+	{"ECDSAPrivateKeyFile", VAR_SERVER},
 	{"ExperimentalProtocol", VAR_SERVER},
 	{"Forwarding", VAR_SERVER},
 	{"GraphDumpFile", VAR_SERVER | VAR_OBSOLETE},
@@ -1526,8 +1526,8 @@ const var_t variables[] = {
 	{"ClampMSS", VAR_SERVER | VAR_HOST},
 	{"Compression", VAR_SERVER | VAR_HOST},
 	{"Digest", VAR_SERVER | VAR_HOST},
-	{"Ed25519PublicKey", VAR_HOST},
-	{"Ed25519PublicKeyFile", VAR_SERVER | VAR_HOST},
+	{"ECDSAPublicKey", VAR_HOST},
+	{"ECDSAPublicKeyFile", VAR_SERVER | VAR_HOST},
 	{"IndirectData", VAR_SERVER | VAR_HOST},
 	{"MACLength", VAR_SERVER | VAR_HOST},
 	{"PMTU", VAR_SERVER | VAR_HOST},
@@ -1969,7 +1969,7 @@ static int cmd_init(int argc, char *argv[]) {
 	fprintf(f, "Name = %s\n", name);
 	fclose(f);
 
-	if(!rsa_keygen(2048, false) || !ed25519_keygen(false))
+	if(!rsa_keygen(2048, false) || !ecdsa_keygen(false))
 		return 1;
 
 	check_port(name);
@@ -2004,7 +2004,7 @@ static int cmd_generate_keys(int argc, char *argv[]) {
 	if(!rsa_keygen(argc > 1 ? atoi(argv[1]) : 2048, true))
 		return 1;
 
-	if(!ed25519_keygen(true))
+	if(!ecdsa_keygen(true))
 		return 1;
 
 	return 0;
@@ -2022,7 +2022,7 @@ static int cmd_generate_rsa_keys(int argc, char *argv[]) {
 	return !rsa_keygen(argc > 1 ? atoi(argv[1]) : 2048, true);
 }
 
-static int cmd_generate_ed25519_keys(int argc, char *argv[]) {
+static int cmd_generate_ecdsa_keys(int argc, char *argv[]) {
 	if(argc > 1) {
 		fprintf(stderr, "Too many arguments!\n");
 		return 1;
@@ -2031,7 +2031,7 @@ static int cmd_generate_ed25519_keys(int argc, char *argv[]) {
 	if(!name)
 		name = get_my_name(false);
 
-	return !ed25519_keygen(true);
+	return !ecdsa_keygen(true);
 }
 
 static int cmd_help(int argc, char *argv[]) {
@@ -2390,7 +2390,7 @@ static int cmd_sign(int argc, char *argv[]) {
 	}
 
 	char fname[PATH_MAX];
-	snprintf(fname, sizeof fname, "%s" SLASH "ed25519_key.priv", confbase);
+	snprintf(fname, sizeof fname, "%s" SLASH "ecdsa_key.priv", confbase);
 	FILE *fp = fopen(fname, "r");
 	if(!fp) {
 		fprintf(stderr, "Could not open %s: %s\n", fname, strerror(errno));
@@ -2611,7 +2611,7 @@ static const struct {
 	{"init", cmd_init},
 	{"generate-keys", cmd_generate_keys},
 	{"generate-rsa-keys", cmd_generate_rsa_keys},
-	{"generate-ed25519-keys", cmd_generate_ed25519_keys},
+	{"generate-ecdsa-keys", cmd_generate_ecdsa_keys},
 	{"help", cmd_help},
 	{"version", cmd_version},
 	{"info", cmd_info},

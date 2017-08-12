@@ -23,19 +23,6 @@ if LINUX
 EXTRA_PROGRAMS += sptps_speed
 endif
 
-ed25519_SOURCES = \
-	ed25519/ed25519.h \
-	ed25519/fe.c ed25519/fe.h \
-	ed25519/fixedint.h \
-	ed25519/ge.c ed25519/ge.h \
-	ed25519/key_exchange.c \
-	ed25519/keypair.c \
-	ed25519/precomp_data.h \
-	ed25519/sc.c ed25519/sc.h \
-	ed25519/sha512.c ed25519/sha512.h \
-	ed25519/sign.c \
-	ed25519/verify.c
-
 tincd_SOURCES = \
 	autoconnect.c autoconnect.h \
 	buffer.c buffer.h \
@@ -93,10 +80,7 @@ tincd_SOURCES = \
 	tincd.c \
 	utils.c utils.h \
 	xalloc.h \
-	version.c version.h \
-	ed25519/ecdh.c \
-	ed25519/ecdsa.c \
-	$(ed25519_SOURCES)
+	version.c version.h
 
 tinc_SOURCES = \
 	dropin.c dropin.h \
@@ -113,36 +97,23 @@ tinc_SOURCES = \
 	tincctl.c tincctl.h \
 	top.c top.h \
 	utils.c utils.h \
-	version.c version.h \
-	ed25519/ecdh.c \
-	ed25519/ecdsa.c \
-	ed25519/ecdsagen.c \
-	$(ed25519_SOURCES)
+	version.c version.h
 
 sptps_test_SOURCES = \
 	logger.c logger.h \
 	sptps.c sptps.h \
 	sptps_test.c \
-	utils.c utils.h \
-	ed25519/ecdh.c \
-	ed25519/ecdsa.c \
-	$(ed25519_SOURCES)
+	utils.c utils.h
 
 sptps_keypair_SOURCES = \
 	sptps_keypair.c \
-	utils.c utils.h \
-	ed25519/ecdsagen.c \
-	$(ed25519_SOURCES)
+	utils.c utils.h
 
 sptps_speed_SOURCES = \
 	logger.c logger.h \
 	sptps.c sptps.h \
 	sptps_speed.c \
-	utils.c utils.h \
-	ed25519/ecdh.c \
-	ed25519/ecdsa.c \
-	ed25519/ecdsagen.c \
-	$(ed25519_SOURCES)
+	utils.c utils.h
 
 ## Conditionally compile device drivers
 
@@ -197,24 +168,38 @@ tincd_SOURCES += \
 	openssl/cipher.c \
 	openssl/crypto.c \
 	openssl/digest.c openssl/digest.h \
+	openssl/ecdh.c \
+	openssl/ecdsa.c \
 	openssl/prf.c \
 	openssl/rsa.c
 tinc_SOURCES += \
 	openssl/cipher.c \
 	openssl/crypto.c \
 	openssl/digest.c openssl/digest.h \
+	openssl/ecdh.c \
+	openssl/ecdsa.c \
+	openssl/ecdsagen.c \
 	openssl/prf.c \
 	openssl/rsa.c \
 	openssl/rsagen.c
 sptps_test_SOURCES += \
+	openssl/cipher.c \
 	openssl/crypto.c \
 	openssl/digest.c openssl/digest.h \
+	openssl/ecdh.c \
+	openssl/ecdsa.c \
 	openssl/prf.c
 sptps_keypair_SOURCES += \
-	openssl/crypto.c
+	openssl/crypto.c \
+	openssl/ecdh.c \
+	openssl/ecdsa.c \
+	openssl/ecdsagen.c
 sptps_speed_SOURCES += \
 	openssl/crypto.c \
 	openssl/digest.c openssl/digest.h \
+	openssl/ecdh.c \
+	openssl/ecdsa.c \
+	openssl/ecdsagen.c \
 	openssl/prf.c
 else
 if GCRYPT

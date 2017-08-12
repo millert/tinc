@@ -314,7 +314,7 @@ int cmd_invite(int argc, char *argv[]) {
 	}
 		
 	ecdsa_t *key;
-	snprintf(filename, sizeof filename, "%s" SLASH "invitations" SLASH "ed25519_key.priv", confbase);
+	snprintf(filename, sizeof filename, "%s" SLASH "invitations" SLASH "ecdsa_key.priv", confbase);
 
 	// Remove the key if there are no outstanding invitations.
 	if(!count)
@@ -756,7 +756,7 @@ make_names:
 	if(!b64key)
 		return false;
 
-	snprintf(filename, sizeof filename, "%s" SLASH "ed25519_key.priv", confbase);
+	snprintf(filename, sizeof filename, "%s" SLASH "ecdsa_key.priv", confbase);
 	f = fopenmask(filename, "w", 0600);
 	if(!f)
 		return false;
@@ -770,7 +770,7 @@ make_names:
 
 	fclose(f);
 
-	fprintf(fh, "Ed25519PublicKey = %s\n", b64key);
+	fprintf(fh, "ECDSAPublicKey = %s\n", b64key);
 
 	sptps_send_record(&sptps, 1, b64key, strlen(b64key));
 	free(b64key);
