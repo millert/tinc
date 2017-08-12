@@ -30,7 +30,7 @@
 #include "utils.h"
 #include "xalloc.h"
 
-#include "ed25519/sha512.h"
+static digest_t *sha256;
 
 splay_tree_t *node_tree;
 static splay_tree_t *node_id_tree;
@@ -54,6 +54,8 @@ static int node_udp_compare(const node_t *a, const node_t *b) {
 }
 
 void init_nodes(void) {
+	sha256 = digest_open_by_name("sha256", sizeof(node_id_t));
+
 	node_tree = splay_alloc_tree((splay_compare_t) node_compare, (splay_action_t) free_node);
 	node_id_tree = splay_alloc_tree((splay_compare_t) node_id_compare, NULL);
 	node_udp_tree = splay_alloc_tree((splay_compare_t) node_udp_compare, NULL);
@@ -63,6 +65,8 @@ void exit_nodes(void) {
 	splay_delete_tree(node_udp_tree);
 	splay_delete_tree(node_id_tree);
 	splay_delete_tree(node_tree);
+
+	digest_close(sha256);
 }
 
 node_t *new_node(void) {
@@ -86,12 +90,10 @@ void free_node(node_t *n) {
 
 	sockaddrfree(&n->address);
 
-#ifndef DISABLE_LEGACY
 	cipher_close(n->incipher);
 	digest_close(n->indigest);
 	cipher_close(n->outcipher);
 	digest_close(n->outdigest);
-#endif
 
 	ecdsa_free(n->ecdsa);
 	sptps_stop(&n->sptps);
@@ -111,9 +113,7 @@ void free_node(node_t *n) {
 }
 
 void node_add(node_t *n) {
-	unsigned char buf[64];
-	sha512(n->name, strlen(n->name),buf);
-	memcpy(&n->id, buf, sizeof n->id);
+	digest_create(sha256, n->name, strlen(n->name), &n->id);
 
 	splay_insert(node_tree, n);
 	splay_insert(node_id_tree, n);
@@ -189,15 +189,10 @@ bool dump_nodes(connection_t *c) {
 			snprintf(id + 2 * c, 3, "%02x", n->id.x[c]);
 		id[sizeof id - 1] = 0;
 		send_request(c, "%d %d %s %s %s %d %d %d %d %x %x %s %s %d %d %d %d %ld", CONTROL, REQ_DUMP_NODES,
-			   n->name, id, n->hostname ?: "unknown port unknown",
-#ifdef DISABLE_LEGACY
-			   0, 0, 0,
-#else
-			   cipher_get_nid(n->outcipher), digest_get_nid(n->outdigest), (int)digest_length(n->outdigest),
-#endif
-			   n->outcompression, n->options, bitfield_to_int(&n->status, sizeof n->status),
-			   n->nexthop ? n->nexthop->name : "-", n->via ? n->via->name ?: "-" : "-", n->distance,
-			   n->mtu, n->minmtu, n->maxmtu, (long)n->last_state_change);
+			   n->name, id, n->hostname ?: "unknown port unknown", cipher_get_nid(n->outcipher),
+			   digest_get_nid(n->outdigest), (int)digest_length(n->outdigest), n->outcompression,
+			   n->options, bitfield_to_int(&n->status, sizeof n->status), n->nexthop ? n->nexthop->name : "-",
+			   n->via ? n->via->name ?: "-" : "-", n->distance, n->mtu, n->minmtu, n->maxmtu, (long)n->last_state_change);
 	}
 
 	return send_request(c, "%d %d", CONTROL, REQ_DUMP_NODES);

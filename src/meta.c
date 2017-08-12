@@ -62,9 +62,6 @@ bool send_meta(connection_t *c, const char *buffer, int length) {
 
 	/* Add our data to buffer */
 	if(c->status.encryptout) {
-#ifdef DISABLE_LEGACY
-		return false;
-#else
 		if(length > c->outbudget) {
 			logger(DEBUG_META, LOG_ERR, "Byte limit exceeded for encryption to %s (%s)", c->name, c->hostname);
 			return false;
@@ -79,7 +76,6 @@ bool send_meta(connection_t *c, const char *buffer, int length) {
 					c->name, c->hostname);
 			return false;
 		}
-#endif
 	} else {
 		buffer_add(&c->outbuf, buffer, length);
 	}
@@ -224,9 +220,6 @@ bool receive_meta(connection_t *c) {
 			inlen -= endp - bufp;
 			bufp = endp;
 		} else {
-#ifdef DISABLE_LEGACY
-			return false;
-#else
 			if(inlen > c->inbudget) {
 				logger(DEBUG_META, LOG_ERR, "yte limit exceeded for decryption from %s (%s)", c->name, c->hostname);
 				return false;
@@ -243,7 +236,6 @@ bool receive_meta(connection_t *c) {
 			}
 
 			inlen = 0;
-#endif
 		}
 
 		while(c->inbuf.len) {
