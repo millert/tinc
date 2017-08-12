@@ -217,7 +217,7 @@ int fsck(const char *argv0) {
 	}
 
 	// Check for private keys.
-	// TODO: use RSAPrivateKeyFile and Ed25519PrivateKeyFile variables if present.
+	// TODO: use RSAPrivateKeyFile and ECDSAPrivateKeyFile variables if present.
 
 	struct stat st;
 	char fname[PATH_MAX];
@@ -274,7 +274,7 @@ int fsck(const char *argv0) {
 #endif
 
 	ecdsa_t *ecdsa_priv = NULL;
-	snprintf(fname, sizeof(fname), "%s/ed25519_key.priv", confbase);
+	snprintf(fname, sizeof(fname), "%s/ecdsa_key.priv", confbase);
 
 	if(stat(fname, &st)) {
 		if(errno != ENOENT) {
@@ -296,8 +296,8 @@ int fsck(const char *argv0) {
 
 		if(!ecdsa_priv) {
 			fprintf(stderr, "ERROR: No key or unusable key found in %s.\n", fname);
-			fprintf(stderr, "You can generate a new Ed25519 key with:\n\n");
-			print_tinc_cmd(argv0, "generate-ed25519-keys");
+			fprintf(stderr, "You can generate a new ECDSA key with:\n\n");
+			print_tinc_cmd(argv0, "generate-ecdsa-keys");
 			return 1;
 		}
 
@@ -323,11 +323,11 @@ int fsck(const char *argv0) {
 #ifdef DISABLE_LEGACY
 
 	if(!ecdsa_priv) {
-		fprintf(stderr, "ERROR: No Ed25519 private key found.\n");
+		fprintf(stderr, "ERROR: No ECDSA private key found.\n");
 #else
 
 	if(!rsa_priv && !ecdsa_priv) {
-		fprintf(stderr, "ERROR: Neither RSA or Ed25519 private key found.\n");
+		fprintf(stderr, "ERROR: Neither RSA or ECDSA private key found.\n");
 #endif
 		fprintf(stderr, "You can generate new keys with:\n\n");
 		print_tinc_cmd(argv0, "generate-keys");
@@ -429,16 +429,16 @@ int fsck(const char *argv0) {
 
 	if(ecdsa_priv) {
 		if(!ecdsa_pub) {
-			fprintf(stderr, "WARNING: No (usable) public Ed25519 key found.\n");
+			fprintf(stderr, "WARNING: No (usable) public ECDSA key found.\n");
 
 			if(ask_fix()) {
 				FILE *f = fopen(fname, "a");
 
 				if(f) {
 					if(ecdsa_write_pem_public_key(ecdsa_priv, f)) {
-						fprintf(stderr, "Wrote Ed25519 public key to %s.\n", fname);
+						fprintf(stderr, "Wrote ECDSA public key to %s.\n", fname);
 					} else {
-						fprintf(stderr, "ERROR: could not write Ed25519 public key to %s.\n", fname);
+						fprintf(stderr, "ERROR: could not write ECDSA public key to %s.\n", fname);
 					}
 
 					fclose(f);
@@ -451,7 +451,7 @@ int fsck(const char *argv0) {
 			char *key1 = ecdsa_get_base64_public_key(ecdsa_pub);
 
 			if(!key1) {
-				fprintf(stderr, "ERROR: public Ed25519 key does not work.\n");
+				fprintf(stderr, "ERROR: public ECDSA key does not work.\n");
 				return 1;
 			}
 
@@ -459,7 +459,7 @@ int fsck(const char *argv0) {
 
 			if(!key2) {
 				free(key1);
-				fprintf(stderr, "ERROR: private Ed25519 key does not work.\n");
+				fprintf(stderr, "ERROR: private ECDSA key does not work.\n");
 				return 1;
 			}
 
@@ -468,13 +468,13 @@ int fsck(const char *argv0) {
 			free(key2);
 
 			if(result) {
-				fprintf(stderr, "ERROR: public and private Ed25519 keys do not match.\n");
+				fprintf(stderr, "ERROR: public and private ECDSA keys do not match.\n");
 				return 1;
 			}
 		}
 	} else {
 		if(ecdsa_pub) {
-			fprintf(stderr, "WARNING: A public Ed25519 key was found but no private key is known.\n");
+			fprintf(stderr, "WARNING: A public ECDSA key was found but no private key is known.\n");
 		}
 	}
 
