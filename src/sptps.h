@@ -23,7 +23,6 @@
 #include "system.h"
 
 #include "cipher.h"
-#include "digest.h"
 #include "ecdh.h"
 #include "ecdsa.h"
 
@@ -57,7 +56,6 @@ typedef struct sptps {
 
 	bool instate;
 	cipher_t *incipher;
-	digest_t *indigest;
 	uint32_t inseqno;
 	uint32_t received;
 	unsigned int replaywin;
@@ -66,7 +64,6 @@ typedef struct sptps {
 
 	bool outstate;
 	cipher_t *outcipher;
-	digest_t *outdigest;
 	uint32_t outseqno;
 
 	ecdsa_t *mykey;

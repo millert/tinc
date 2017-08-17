@@ -211,7 +211,7 @@ static bool send_sig(sptps_t *s) {
 
 // Generate key material from the shared secret created from the ECDHE key exchange.
 static bool generate_key_material(sptps_t *s, const char *shared, size_t len) {
-	// Initialise cipher and digest structures if necessary
+	// Initialise cipher structure if necessary
 	if(!s->outstate) {
 		s->incipher = cipher_open_by_name("aes-256-gcm");
 		s->outcipher = cipher_open_by_name("aes-256-gcm");
@@ -759,8 +759,6 @@ bool sptps_stop(sptps_t *s) {
 	// Clean up any resources.
 	cipher_close(s->incipher);
 	cipher_close(s->outcipher);
-	digest_close(s->indigest);
-	digest_close(s->outdigest);
 	ecdh_free(s->ecdh);
 	free(s->inbuf);
 	free(s->mykex);
