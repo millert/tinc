@@ -21,12 +21,14 @@
 #include "system.h"
 
 #include "cipher.h"
+#include "conf.h"
 #include "crypto.h"
 #include "ecdh.h"
 #include "ecdsa.h"
 #include "logger.h"
 #include "prf.h"
 #include "sptps.h"
+#include "xalloc.h"
 
 unsigned int sptps_replaywin = 16;
 
@@ -80,25 +82,56 @@ static void warning(sptps_t *s, const char *format, ...) {
 	va_end(ap);
 }
 
+static bool sptps_encrypt(sptps_t *s, uint32_t seqno, const void *header, size_t headerlen, const void *indata, size_t inlen, char *outdata) {
+	seqno = htonl(seqno);
+	if(!cipher_set_counter(s->outcipher, &seqno, sizeof seqno))
+		return false;
+
+	if(headerlen != 0) {
+		if(!cipher_gcm_encrypt_start(s->outcipher, header, headerlen, outdata, NULL))
+			return false;
+
+		if(!cipher_gcm_encrypt_finish(s->outcipher, indata, inlen, outdata + headerlen, NULL))
+			return false;
+	} else {
+		if(!cipher_gcm_encrypt(s->outcipher, indata, inlen, outdata, NULL))
+			return false;
+	}
+
+	return true;
+}
+
+static bool sptps_decrypt(sptps_t *s, uint32_t seqno, const void *indata, size_t inlen, void *outdata, size_t *outlen) {
+	if (s->inprogress) {
+		// Decrypt in progress, finish it
+		if(!cipher_gcm_decrypt_finish(s->incipher, indata, inlen, outdata, outlen))
+			return false;
+	} else {
+		seqno = htonl(seqno);
+		if(!cipher_set_counter(s->incipher, &seqno, sizeof seqno))
+			return false;
+
+		if(!cipher_gcm_decrypt(s->incipher, indata, inlen, outdata, outlen))
+			return false;
+	}
+	s->inprogress = false;
+	return true;
+}
+
 // Send a record (datagram version, accepts all record types, handles encryption and authentication).
 static bool send_record_priv_datagram(sptps_t *s, uint8_t type, const void *data, uint16_t len) {
 	char buffer[len + 21UL];
 
 	// Create header with sequence number, length and record type
-	uint32_t seqno = htonl(s->outseqno++);
+	uint32_t seqno = s->outseqno++;
+	uint32_t netseqno = ntohl(seqno);
 
-	memcpy(buffer, &seqno, 4);
+	memcpy(buffer, &netseqno, 4);
 	buffer[4] = type;
 
 	if(s->outstate) {
 		// If first handshake has finished, encrypt and HMAC
-		if(!cipher_set_counter(s->outcipher, &seqno, sizeof seqno))
-			return error(s, EINVAL, "Failed to set counter");
-
-		if(!cipher_gcm_encrypt_start(s->outcipher, buffer + 4, 1, buffer + 4, NULL))
-			return error(s, EINVAL, "Error encrypting record");
-
-		if(!cipher_gcm_encrypt_finish(s->outcipher, data, len, buffer + 5, NULL))
+		if(!sptps_encrypt(s, seqno, &type, 1, data, len, buffer + 4))
 			return error(s, EINVAL, "Error encrypting record");
 
 		return s->send_data(s->handle, type, buffer, len + 21UL);
@@ -116,7 +149,7 @@ static bool send_record_priv(sptps_t *s, uint8_t type, const void *data, uint16_
 	char buffer[len + 19UL];
 
 	// Create header with sequence number, length and record type
-	uint32_t seqno = htonl(s->outseqno++);
+	uint32_t seqno = s->outseqno++;
 	uint16_t netlen = htons(len);
 
 	memcpy(buffer, &netlen, 2);
@@ -124,13 +157,7 @@ static bool send_record_priv(sptps_t *s, uint8_t type, const void *data, uint16_
 
 	if(s->outstate) {
 		// If first handshake has finished, encrypt and HMAC
-		if(!cipher_set_counter(s->outcipher, &seqno, 4))
-			return error(s, EINVAL, "Failed to set counter");
-
-		if(!cipher_gcm_encrypt_start(s->outcipher, buffer, 3, buffer, NULL))
-			return error(s, EINVAL, "Error encrypting record");
-
-		if(!cipher_gcm_encrypt_finish(s->outcipher, data, len, buffer + 3, NULL))
+		if(!sptps_encrypt(s, seqno, buffer, 3, data, len, buffer))
 			return error(s, EINVAL, "Error encrypting record");
 
 		return s->send_data(s->handle, type, buffer, len + 19UL);
@@ -202,13 +229,21 @@ static bool send_sig(sptps_t *s) {
 
 // Generate key material from the shared secret created from the ECDHE key exchange.
 static bool generate_key_material(sptps_t *s, const char *shared, size_t len) {
+	char *cipher;
+
+	if(!get_config_string(lookup_config(config_tree, "SptpsCipher"), &cipher))
+		cipher = xstrdup("aes-256-gcm");
+
 	// Initialise cipher structure if necessary
 	if(!s->outstate) {
-		s->incipher = cipher_open_by_name("aes-256-gcm");
-		s->outcipher = cipher_open_by_name("aes-256-gcm");
-		if(!s->incipher || !s->outcipher)
+		s->incipher = cipher_open_by_name(cipher);
+		s->outcipher = cipher_open_by_name(cipher);
+		if(!s->incipher || !s->outcipher) {
+			free(cipher);
 			return error(s, EINVAL, "Failed to open cipher");
+		}
 	}
+	free(cipher);
 
 	// Allocate memory for key material
 	size_t keylen = cipher_keylength(s->incipher) + cipher_keylength(s->outcipher);
@@ -387,8 +422,8 @@ static bool receive_handshake(sptps_t *s, const char *data, uint16_t len) {
 
 static bool sptps_check_seqno(sptps_t *s, uint32_t seqno, bool update_state) {
 	// Replay protection using a sliding window of configurable size.
-	// s->inseqno is expected sequence number
-	// seqno is received sequence number
+	// s->inseqno is expected sequence number (host byte order)
+	// seqno is received sequence number (host byte order)
 	// s->late[] is a circular buffer, a 1 bit means a packet has not been received yet
 	// The circular buffer contains bits for sequence numbers from s->inseqno - s->replaywin * 8 to (but excluding) s->inseqno.
 	if(s->replaywin) {
@@ -452,11 +487,7 @@ bool sptps_verify_datagram(sptps_t *s, const void *data, size_t len) {
 
 	char buffer[len];
 
-	if (!cipher_set_counter(s->incipher, data, sizeof seqno))
-		return error(s, EINVAL, "Failed to set counter");
-
-	size_t outlen;
-	return cipher_gcm_decrypt(s->incipher, data + 4, len - 4, buffer, &outlen);
+	return sptps_decrypt(s, seqno, data + 4, len - 4, buffer, NULL);
 }
 
 // Receive incoming data, datagram version.
@@ -486,11 +517,9 @@ static bool sptps_receive_data_datagram(sptps_t *s, const char *data, size_t len
 
 	char buffer[len];
 
-	if (!cipher_set_counter(s->incipher, data, sizeof seqno))
-		return error(s, EINVAL, "Failed to set counter");
 	size_t outlen;
 
-	if (!cipher_gcm_decrypt(s->incipher, data + 4, len - 4, buffer, &outlen))
+	if (!sptps_decrypt(s, seqno, data + 4, len - 4, buffer, &outlen))
 		return error(s, EIO, "Failed to decrypt and verify packet");
 
 	if(!sptps_check_seqno(s, seqno, true))
@@ -515,6 +544,23 @@ static bool sptps_receive_data_datagram(sptps_t *s, const char *data, size_t len
 	} else {
 		return error(s, EIO, "Invalid record type %d", type);
 	}
+
+	return true;
+}
+
+static bool sptps_get_reclen(sptps_t *s, uint32_t seqno) {
+	if(s->instate) {
+		seqno = htonl(seqno);
+		if(!cipher_set_counter(s->incipher, &seqno, 4))
+			return false;
+
+		if(!cipher_gcm_decrypt_start(s->incipher, s->inbuf, 2, &s->reclen, NULL))
+			return false;
+		s->inprogress = true;
+	} else {
+		memcpy(&s->reclen, s->inbuf, 2);
+	}
+	s->reclen = ntohs(s->reclen);
 
 	return true;
 }
@@ -546,23 +592,10 @@ size_t sptps_receive_data(sptps_t *s, const void *data, size_t len) {
 		if(s->buflen < 2)
 			return total_read;
 
-		// Update sequence number.
+		// Get the length bytes
 
-		uint32_t seqno = htonl(s->inseqno++);
-
-		// Decrypt the length bytes
-
-		if(s->instate) {
-			if(!cipher_set_counter(s->incipher, &seqno, 4))
-				return error(s, EINVAL, "Failed to set counter");
-
-			if(!cipher_gcm_decrypt_start(s->incipher, s->inbuf, 2, &s->reclen, NULL))
-				return error(s, EINVAL, "Failed to decrypt record");
-		} else {
-			memcpy(&s->reclen, s->inbuf, 2);
-		}
-
-		s->reclen = ntohs(s->reclen);
+		if(!sptps_get_reclen(s, s->inseqno))
+			return error(s, EINVAL, "Failed to get record length");
 
 		// If we have the length bytes, ensure our buffer can hold the whole request.
 		s->inbuf = realloc(s->inbuf, s->reclen + 19UL);
@@ -587,9 +620,13 @@ size_t sptps_receive_data(sptps_t *s, const void *data, size_t len) {
 	if(s->buflen < s->reclen + (s->instate ? 19UL : 3UL))
 		return total_read;
 
+	// Update sequence number.
+
+	uint32_t seqno = s->inseqno++;
+
 	// Check HMAC and decrypt.
 	if(s->instate) {
-		if(!cipher_gcm_decrypt_finish(s->incipher, s->inbuf + 2UL, s->reclen + 17UL, s->inbuf + 2UL, NULL))
+		if (!sptps_decrypt(s, seqno, s->inbuf + 2UL, s->reclen + 17UL, s->inbuf + 2UL, NULL))
 			return error(s, EINVAL, "Failed to decrypt and verify record");
 	}
 

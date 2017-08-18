@@ -83,6 +83,7 @@ tincd_SOURCES = \
 	version.c version.h
 
 tinc_SOURCES = \
+	conf.c conf.h \
 	dropin.c dropin.h \
 	fsck.c fsck.h \
 	ifconfig.c ifconfig.h \
@@ -92,6 +93,7 @@ tinc_SOURCES = \
 	names.c names.h \
 	netutl.c netutl.h \
 	script.c script.h \
+	splay_tree.c splay_tree.h \
 	sptps.c sptps.h \
 	subnet_parse.c subnet.h \
 	tincctl.c tincctl.h \

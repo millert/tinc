@@ -23,6 +23,7 @@
 
 #include "net.h"
 #include "node.h"
+#include "xalloc.h"
 
 typedef enum subnet_type_t {
 	SUBNET_MAC = 0,
@@ -65,9 +66,19 @@ typedef struct subnet_t {
 
 extern splay_tree_t *subnet_tree;
 
+/* Allocating and freeing space for subnets */
+
+static inline subnet_t *new_subnet(void) __attribute__ ((__malloc__));
+static inline subnet_t *new_subnet(void) {
+	return xzalloc(sizeof(subnet_t));
+}
+
+static inline void free_subnet(subnet_t *subnet);
+static inline void free_subnet(subnet_t *subnet) {
+	free(subnet);
+}
+
 extern int subnet_compare(const struct subnet_t *, const struct subnet_t *);
-extern subnet_t *new_subnet(void) __attribute__ ((__malloc__));
-extern void free_subnet(subnet_t *);
 extern void init_subnets(void);
 extern void exit_subnets(void);
 extern splay_tree_t *new_subnet_tree(void) __attribute__ ((__malloc__));
