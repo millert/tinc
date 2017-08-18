@@ -1740,6 +1740,7 @@ const var_t variables[] = {
 	/* Host configuration */
 	{"Address", VAR_HOST | VAR_MULTIPLE},
 	{"Cipher", VAR_SERVER | VAR_HOST},
+	{"SptpsCipher", VAR_SERVER | VAR_HOST},
 	{"ClampMSS", VAR_SERVER | VAR_HOST},
 	{"Compression", VAR_SERVER | VAR_HOST},
 	{"Digest", VAR_SERVER | VAR_HOST},

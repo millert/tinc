@@ -55,6 +55,7 @@ typedef struct sptps {
 	uint16_t reclen;
 
 	bool instate;
+	bool inprogress;
 	cipher_t *incipher;
 	uint32_t inseqno;
 	uint32_t received;
