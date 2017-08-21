@@ -23,6 +23,19 @@ if LINUX
 EXTRA_PROGRAMS += sptps_speed
 endif
 
+ed25519_SOURCES = \
+	ed25519/ed25519.h \
+	ed25519/fe.c ed25519/fe.h \
+	ed25519/fixedint.h \
+	ed25519/ge.c ed25519/ge.h \
+	ed25519/key_exchange.c \
+	ed25519/keypair.c \
+	ed25519/precomp_data.h \
+	ed25519/sc.c ed25519/sc.h \
+	ed25519/sha512.c ed25519/sha512.h \
+	ed25519/sign.c \
+	ed25519/verify.c
+
 chacha_poly1305_SOURCES = \
 	chacha-poly1305/chacha.c chacha-poly1305/chacha.h \
 	chacha-poly1305/chacha-poly1305.c chacha-poly1305/chacha-poly1305.h \
@@ -87,6 +100,7 @@ tincd_SOURCES = \
 	utils.c utils.h \
 	xalloc.h \
 	version.c version.h \
+	$(ed25519_SOURCES) \
 	$(chacha_poly1305_SOURCES)
 
 tinc_SOURCES = \
@@ -107,6 +121,7 @@ tinc_SOURCES = \
 	top.c top.h \
 	utils.c utils.h \
 	version.c version.h \
+	$(ed25519_SOURCES) \
 	$(chacha_poly1305_SOURCES)
 
 sptps_test_SOURCES = \
@@ -114,6 +129,7 @@ sptps_test_SOURCES = \
 	sptps.c sptps.h \
 	sptps_test.c \
 	utils.c utils.h \
+	$(ed25519_SOURCES) \
 	$(chacha_poly1305_SOURCES)
 
 sptps_keypair_SOURCES = \
@@ -125,6 +141,7 @@ sptps_speed_SOURCES = \
 	sptps.c sptps.h \
 	sptps_speed.c \
 	utils.c utils.h \
+	$(ed25519_SOURCES) \
 	$(chacha_poly1305_SOURCES)
 
 ## Conditionally compile device drivers
