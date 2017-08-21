@@ -23,6 +23,11 @@ if LINUX
 EXTRA_PROGRAMS += sptps_speed
 endif
 
+chacha_poly1305_SOURCES = \
+	chacha-poly1305/chacha.c chacha-poly1305/chacha.h \
+	chacha-poly1305/chacha-poly1305.c chacha-poly1305/chacha-poly1305.h \
+	chacha-poly1305/poly1305.c chacha-poly1305/poly1305.h
+
 tincd_SOURCES = \
 	address_cache.c address_cache.h \
 	autoconnect.c autoconnect.h \
@@ -81,7 +86,8 @@ tincd_SOURCES = \
 	tincd.c \
 	utils.c utils.h \
 	xalloc.h \
-	version.c version.h
+	version.c version.h \
+	$(chacha_poly1305_SOURCES)
 
 tinc_SOURCES = \
 	conf.c conf.h \
@@ -100,13 +106,15 @@ tinc_SOURCES = \
 	tincctl.c tincctl.h \
 	top.c top.h \
 	utils.c utils.h \
-	version.c version.h
+	version.c version.h \
+	$(chacha_poly1305_SOURCES)
 
 sptps_test_SOURCES = \
 	logger.c logger.h \
 	sptps.c sptps.h \
 	sptps_test.c \
-	utils.c utils.h
+	utils.c utils.h \
+	$(chacha_poly1305_SOURCES)
 
 sptps_keypair_SOURCES = \
 	sptps_keypair.c \
@@ -116,7 +124,8 @@ sptps_speed_SOURCES = \
 	logger.c logger.h \
 	sptps.c sptps.h \
 	sptps_speed.c \
-	utils.c utils.h
+	utils.c utils.h \
+	$(chacha_poly1305_SOURCES)
 
 ## Conditionally compile device drivers
 

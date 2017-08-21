@@ -56,7 +56,8 @@ typedef struct sptps {
 
 	bool instate;
 	bool inprogress;
-	cipher_t *incipher;
+	bool incipher_gcm;
+	void *incipher;
 	uint32_t inseqno;
 	uint32_t received;
 	unsigned int replaywin;
@@ -64,7 +65,8 @@ typedef struct sptps {
 	char *late;
 
 	bool outstate;
-	cipher_t *outcipher;
+	bool outcipher_gcm;
+	void *outcipher;
 	uint32_t outseqno;
 
 	ecdsa_t *mykey;

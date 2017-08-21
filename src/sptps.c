@@ -20,6 +20,7 @@
 
 #include "system.h"
 
+#include "chacha-poly1305/chacha-poly1305.h"
 #include "cipher.h"
 #include "conf.h"
 #include "crypto.h"
@@ -83,38 +84,51 @@ static void warning(sptps_t *s, const char *format, ...) {
 }
 
 static bool sptps_encrypt(sptps_t *s, uint32_t seqno, const void *header, size_t headerlen, const void *indata, size_t inlen, char *outdata) {
-	seqno = htonl(seqno);
-	if(!cipher_set_counter(s->outcipher, &seqno, sizeof seqno))
-		return false;
-
-	if(headerlen != 0) {
-		if(!cipher_gcm_encrypt_start(s->outcipher, header, headerlen, outdata, NULL))
+	if (s->outcipher_gcm) {
+		seqno = htonl(seqno);
+		if(!cipher_set_counter(s->outcipher, &seqno, sizeof seqno))
 			return false;
 
-		if(!cipher_gcm_encrypt_finish(s->outcipher, indata, inlen, outdata + headerlen, NULL))
-			return false;
+		if(headerlen != 0) {
+			if(!cipher_gcm_encrypt_start(s->outcipher, header, headerlen, outdata, NULL))
+				return false;
+
+			if(!cipher_gcm_encrypt_finish(s->outcipher, indata, inlen, outdata + headerlen, NULL))
+				return false;
+		} else {
+			if(!cipher_gcm_encrypt(s->outcipher, indata, inlen, outdata, NULL))
+				return false;
+		}
 	} else {
-		if(!cipher_gcm_encrypt(s->outcipher, indata, inlen, outdata, NULL))
-			return false;
+		if(headerlen != 0) {
+			memcpy(outdata, header, headerlen);
+			memcpy(outdata + headerlen, indata, inlen);
+		}
+		chacha_poly1305_encrypt(s->outcipher, seqno, outdata, headerlen + inlen, outdata, NULL);
 	}
 
 	return true;
 }
 
 static bool sptps_decrypt(sptps_t *s, uint32_t seqno, const void *indata, size_t inlen, void *outdata, size_t *outlen) {
-	if (s->inprogress) {
-		// Decrypt in progress, finish it
-		if(!cipher_gcm_decrypt_finish(s->incipher, indata, inlen, outdata, outlen))
-			return false;
-	} else {
-		seqno = htonl(seqno);
-		if(!cipher_set_counter(s->incipher, &seqno, sizeof seqno))
-			return false;
+	if (s->incipher_gcm) {
+		if (s->inprogress) {
+			// Decrypt in progress, finish it
+			if(!cipher_gcm_decrypt_finish(s->incipher, indata, inlen, outdata, outlen))
+				return false;
+		} else {
+			seqno = htonl(seqno);
+			if(!cipher_set_counter(s->incipher, &seqno, sizeof seqno))
+				return false;
 
-		if(!cipher_gcm_decrypt(s->incipher, indata, inlen, outdata, outlen))
+			if(!cipher_gcm_decrypt(s->incipher, indata, inlen, outdata, outlen))
+				return false;
+		}
+		s->inprogress = false;
+	} else {
+		if (!chacha_poly1305_decrypt(s->incipher, seqno, indata, inlen, outdata, outlen))
 			return false;
 	}
-	s->inprogress = false;
 	return true;
 }
 
@@ -127,7 +141,6 @@ static bool send_record_priv_datagram(sptps_t *s, uint8_t type, const void *data
 	uint32_t netseqno = ntohl(seqno);
 
 	memcpy(buffer, &netseqno, 4);
-	buffer[4] = type;
 
 	if(s->outstate) {
 		// If first handshake has finished, encrypt and HMAC
@@ -137,6 +150,7 @@ static bool send_record_priv_datagram(sptps_t *s, uint8_t type, const void *data
 		return s->send_data(s->handle, type, buffer, len + 21UL);
 	} else {
 		// Otherwise send as plaintext
+		buffer[4] = type;
 		memcpy(buffer + 5, data, len);
 		return s->send_data(s->handle, type, buffer, len + 5UL);
 	}
@@ -236,23 +250,35 @@ static bool send_sig(sptps_t *s) {
 	return send_record_priv(s, SPTPS_HANDSHAKE, sig, sizeof(sig));
 }
 
-// Generate key material from the shared secret created from the ECDHE key exchange.
-static bool generate_key_material(sptps_t *s, const char *shared, size_t len) {
-	char *cipher;
+bool sptps_init_ciphers(sptps_t *s)
+{
+	char *cipher = NULL;
+	bool ret = false;
 
-	if(!get_config_string(lookup_config(config_tree, "SptpsCipher"), &cipher))
-		cipher = xstrdup("aes-256-gcm");
-
-	// Initialise cipher structure if necessary
-	if(!s->outstate) {
+	get_config_string(lookup_config(config_tree, "SptpsCipher"), &cipher);
+	if (cipher == NULL || strcmp(cipher, "chacha20-poly1305") == 0) {
+		s->incipher = chacha_poly1305_init();
+		s->outcipher = chacha_poly1305_init();
+		ret = (s->incipher && s->outcipher);
+	}
+	if (strcmp(cipher, "aes-256-gcm") == 0) {
 		s->incipher = cipher_open_by_name(cipher);
+		s->incipher_gcm = true;
 		s->outcipher = cipher_open_by_name(cipher);
-		if(!s->incipher || !s->outcipher) {
-			free(cipher);
-			return error(s, EINVAL, "Failed to open cipher");
-		}
+		s->outcipher_gcm = true;
+		ret = (s->incipher && s->outcipher);
 	}
 	free(cipher);
+	return ret;
+}
+
+// Generate key material from the shared secret created from the ECDHE key exchange.
+static bool generate_key_material(sptps_t *s, const char *shared, size_t len) {
+	// Initialise cipher structure if necessary
+	if(!s->outstate) {
+		if(!sptps_init_ciphers(s))
+			return error(s, EINVAL, "Failed to open cipher");
+	}
 
 	// Allocate memory for key material
 	size_t keylen = cipher_keylength(s->incipher) + cipher_keylength(s->outcipher);
@@ -622,7 +648,7 @@ static bool sptps_receive_data_datagram(sptps_t *s, const char *data, size_t len
 }
 
 static bool sptps_get_reclen(sptps_t *s, uint32_t seqno) {
-	if(s->instate) {
+	if (s->incipher_gcm && s->instate) {
 		seqno = htonl(seqno);
 		if(!cipher_set_counter(s->incipher, &seqno, 4))
 			return false;
