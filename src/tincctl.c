@@ -30,7 +30,7 @@
 #include "protocol.h"
 #include "control_common.h"
 #include "crypto.h"
-#include "ecdsagen.h"
+#include "ecdsa.h"
 #include "fsck.h"
 #include "info.h"
 #include "invitation.h"
@@ -387,7 +387,7 @@ static bool ecdsa_keygen(bool ask) {
 
 	fprintf(stderr, "Generating ECDSA keypair:\n");
 
-	if(!(key = ecdsa_generate())) {
+	if(!(key = ecdsa_generate(get_key_type()))) {
 		fprintf(stderr, "Error during key generation!\n");
 		return false;
 	} else
@@ -1463,6 +1463,40 @@ ecdsa_t *get_pubkey(FILE *f) {
 	return NULL;
 }
 
+int get_key_type(void) {
+	int keytype = SPTPS_KEY_ED25519;
+	FILE *f = fopen(tinc_conf, "r");
+	if(!f) {
+		return keytype;
+	}
+
+	char buf[4096];
+	char *value;
+	while(fgets(buf, sizeof buf, f)) {
+		int len = strcspn(buf, "\t =");
+		value = buf + len;
+		value += strspn(value, "\t ");
+		if(*value == '=') {
+			value++;
+			value += strspn(value, "\t ");
+		}
+		if(!rstrip(value))
+			continue;
+		buf[len] = 0;
+		if(strcasecmp(buf, "SptpsKeyType"))
+			continue;
+		if(*value) {
+			if (strcasecmp(value, "ECDSA") == 0) {
+				keytype = SPTPS_KEY_ECDSA;
+			}
+			break;
+		}
+	}
+
+	fclose(f);
+	return keytype;
+}
+
 const var_t variables[] = {
 	/* Server configuration */
 	{"AddressFamily", VAR_SERVER},
@@ -1523,12 +1557,15 @@ const var_t variables[] = {
 	/* Host configuration */
 	{"Address", VAR_HOST | VAR_MULTIPLE},
 	{"Cipher", VAR_SERVER | VAR_HOST},
-	{"SptpsCipher", VAR_SERVER | VAR_HOST},
+	{"SptpsCipher", VAR_SERVER},
+	{"SptpsKeyType", VAR_SERVER},
 	{"ClampMSS", VAR_SERVER | VAR_HOST},
 	{"Compression", VAR_SERVER | VAR_HOST},
 	{"Digest", VAR_SERVER | VAR_HOST},
 	{"ECDSAPublicKey", VAR_HOST},
 	{"ECDSAPublicKeyFile", VAR_SERVER | VAR_HOST},
+	{"Ed25519PublicKey", VAR_HOST},
+	{"Ed25519PublicKeyFile", VAR_SERVER | VAR_HOST},
 	{"IndirectData", VAR_SERVER | VAR_HOST},
 	{"MACLength", VAR_SERVER | VAR_HOST},
 	{"PMTU", VAR_SERVER | VAR_HOST},
@@ -2398,7 +2435,7 @@ static int cmd_sign(int argc, char *argv[]) {
 		return 1;
 	}
 
-	ecdsa_t *key = ecdsa_read_pem_private_key(fp);
+	ecdsa_t *key = ecdsa_read_pem_private_key(SPTPS_KEY_ECDSA, fp);
 
 	if(!key) {
 		fprintf(stderr, "Could not read private key from %s\n", fname);
@@ -2558,7 +2595,7 @@ static int cmd_verify(int argc, char *argv[]) {
 	ecdsa_t *key = get_pubkey(fp);
 	if(!key) {
 		rewind(fp);
-		key = ecdsa_read_pem_public_key(fp);
+		key = ecdsa_read_pem_public_key(SPTPS_KEY_ECDSA, fp);
 	}
 	if(!key) {
 		fprintf(stderr, "Could not read public key from %s\n", fname);

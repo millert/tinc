@@ -197,11 +197,14 @@ bool sptps_send_record(sptps_t *s, uint8_t type, const void *data, uint16_t len)
 
 // Send a Key EXchange record, containing a random nonce and an ECDHE public key.
 static bool send_kex(sptps_t *s) {
-	size_t keylen = ECDH_SIZE;
-
 	// Make room for our KEX message, which we will keep around since send_sig() needs it.
 	if(s->mykex)
 		return false;
+
+	if(!(s->ecdh = ecdh_alloc(ecdsa_keytype(s->mykey))))
+		return error(s, EINVAL, "Failed to allocate ECDH public key");
+	size_t keylen = ecdh_size(s->ecdh);
+
 	s->mykex = realloc(s->mykex, 1 + 32 + keylen);
 	if(!s->mykex)
 		return error(s, errno, strerror(errno));
@@ -213,7 +216,7 @@ static bool send_kex(sptps_t *s) {
 	randomize(s->mykex + 1, 32);
 
 	// Create a new ECDH public key.
-	if(!(s->ecdh = ecdh_generate_public(s->mykex + 1 + 32)))
+	if(!ecdh_generate_public(s->ecdh, s->mykex + 1 + 32))
 		return error(s, EINVAL, "Failed to generate ECDH public key");
 
 	return send_record_priv(s, SPTPS_HANDSHAKE, s->mykex, 1 + 32 + keylen);
@@ -221,7 +224,7 @@ static bool send_kex(sptps_t *s) {
 
 // Send a SIGnature record, containing an ECDSA signature over both KEX records.
 static bool send_sig(sptps_t *s) {
-	size_t keylen = ECDH_SIZE;
+	size_t keylen = ecdh_size(s->ecdh);
 	size_t siglen = ecdsa_size(s->mykey);
 
 	// Concatenate both KEX messages, plus tag indicating if it is from the connection originator, plus label
@@ -325,7 +328,8 @@ static bool receive_ack(sptps_t *s, const char *data, uint16_t len) {
 // Receive a Key EXchange record, respond by sending a SIG record.
 static bool receive_kex(sptps_t *s, const char *data, uint16_t len) {
 	// Verify length of the HELLO record
-	if(len != 1 + 32 + ECDH_SIZE)
+	size_t keylen = ecdh_size(s->ecdh);
+	if(len != 1 + 32 + keylen)
 		return error(s, EIO, "Invalid KEX record length");
 
 	// Ignore version number for now.
@@ -344,7 +348,7 @@ static bool receive_kex(sptps_t *s, const char *data, uint16_t len) {
 
 // Receive a SIGnature record, verify it, if it passed, compute the shared secret and calculate the session keys.
 static bool receive_sig(sptps_t *s, const char *data, uint16_t len) {
-	size_t keylen = ECDH_SIZE;
+	size_t keylen = ecdh_size(s->ecdh);
 	size_t siglen = ecdsa_size(s->hiskey);
 
 	// Verify length of KEX record.
@@ -364,7 +368,7 @@ static bool receive_sig(sptps_t *s, const char *data, uint16_t len) {
 		return error(s, EIO, "Failed to verify SIG record");
 
 	// Compute shared secret.
-	char shared[ECDH_SHARED_SIZE];
+	char shared[ecdh_shared_size(s->ecdh)];
 	if(!ecdh_compute_shared(s->ecdh, s->hiskex + 1 + 32, shared))
 		return error(s, EINVAL, "Failed to compute ECDH shared secret");
 	s->ecdh = NULL;

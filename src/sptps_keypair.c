@@ -22,7 +22,7 @@
 #include <getopt.h>
 
 #include "crypto.h"
-#include "ecdsagen.h"
+#include "ecdsa.h"
 #include "utils.h"
 
 static char *program_name;

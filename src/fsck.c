@@ -21,7 +21,6 @@
 
 #include "crypto.h"
 #include "ecdsa.h"
-#include "ecdsagen.h"
 #include "fsck.h"
 #include "names.h"
 #ifndef DISABLE_LEGACY
@@ -248,7 +247,7 @@ int fsck(const char *argv0) {
 			fprintf(stderr, "ERROR: could not open %s: %s\n", fname, strerror(errno));
 			return 1;
 		}
-		ecdsa_priv = ecdsa_read_pem_private_key(f);
+		ecdsa_priv = ecdsa_read_pem_private_key(SPTPS_KEY_ECDSA, f);
 		fclose(f);
 		if(!ecdsa_priv) {
 			fprintf(stderr, "ERROR: No key or unusable key found in %s.\n", fname);
@@ -355,7 +354,7 @@ int fsck(const char *argv0) {
 		ecdsa_pub = get_pubkey(f);
 		if(!ecdsa_pub) {
 			rewind(f);
-			ecdsa_pub = ecdsa_read_pem_public_key(f);
+			ecdsa_pub = ecdsa_read_pem_public_key(SPTPS_KEY_ECDSA, f);
 		}
 		fclose(f);
 	}

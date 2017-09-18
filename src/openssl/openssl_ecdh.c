@@ -24,19 +24,27 @@
 #include <openssl/ecdh.h>
 #include <openssl/obj_mac.h>
 
-#define __TINC_ECDH_INTERNAL__
-typedef EC_KEY ecdh_t;
-
 #include "../ecdh.h"
 #include "../logger.h"
 #include "../utils.h"
 #include "../xalloc.h"
 
-ecdh_t *ecdh_generate_public(void *pubkey) {
-	ecdh_t *ecdh = EC_KEY_new_by_curve_name(NID_secp521r1);
+#define ECDH_SIZE 67
+#define ECDH_SHARED_SIZE 66
+
+static size_t openssl_ecdh_size(void) {
+        return ECDH_SIZE;
+}
+
+static size_t openssl_ecdh_shared_size(void) {
+        return ECDH_SHARED_SIZE;
+}
+
+static void *openssl_ecdh_generate_public(void *pubkey) {
+	EC_KEY *ecdh = EC_KEY_new_by_curve_name(NID_secp521r1);
 	if(!ecdh) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "Generating EC key_by_curve_name failed: %s", ERR_error_string(ERR_get_error(), NULL));
-		return false;
+		return NULL;
 	}
 
 	if(!EC_KEY_generate_key(ecdh)) {
@@ -62,7 +70,8 @@ ecdh_t *ecdh_generate_public(void *pubkey) {
 	return ecdh;
 }
 
-bool ecdh_compute_shared(ecdh_t *ecdh, const void *pubkey, void *shared) {
+static bool openssl_ecdh_compute_shared(void *v, const void *pubkey, void *shared) {
+	EC_KEY *ecdh = v;
 	EC_POINT *point = EC_POINT_new(EC_KEY_get0_group(ecdh));
 	if(!point) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "EC_POINT_new() failed: %s", ERR_error_string(ERR_get_error(), NULL));
@@ -90,7 +99,16 @@ bool ecdh_compute_shared(ecdh_t *ecdh, const void *pubkey, void *shared) {
 	return true;
 }
 
-void ecdh_free(ecdh_t *ecdh) {
+static void openssl_ecdh_free(void *v) {
+	EC_KEY *ecdh = v;
 	if(ecdh)
 		EC_KEY_free(ecdh);
 }
+
+struct ecdh_operations openssl_ecdh_operations = {
+	openssl_ecdh_size,
+	openssl_ecdh_shared_size,
+	openssl_ecdh_generate_public,
+	openssl_ecdh_compute_shared,
+	openssl_ecdh_free
+};

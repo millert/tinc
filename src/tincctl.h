@@ -51,6 +51,7 @@ extern bool recvline(int fd, char *line, size_t len);
 extern int check_port(char *name);
 extern FILE *fopenmask(const char *filename, const char *mode, mode_t perms);
 extern ecdsa_t *get_pubkey(FILE *f);
+extern int get_key_type(void);
 
 #endif
 
