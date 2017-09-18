@@ -23,15 +23,23 @@
 #ifndef __TINC_ECDH_H__
 #define __TINC_ECDH_H__
 
-#define ECDH_SIZE 67
-#define ECDH_SHARED_SIZE 66
-
 #ifndef TINC_ECDH_INTERNAL
 typedef struct ecdh ecdh_t;
 #endif
 
-extern ecdh_t *ecdh_generate_public(void *pubkey) __attribute__((__malloc__));
+struct ecdh_operations {
+	size_t (*size)(void);
+	size_t (*shared_size)(void);
+	void *(*generate_public)(void *pubkey);
+	bool (*compute_shared)(void *ecdh, const void *pubkey, void *shared);
+	void (*free)(void *ecdh);
+};
+
+extern ecdh_t *ecdh_alloc(int keytype) __attribute__((__malloc__));
+extern bool ecdh_generate_public(ecdh_t *ecdh, void *pubkey);
 extern bool ecdh_compute_shared(ecdh_t *ecdh, const void *pubkey, void *shared) __attribute__((__warn_unused_result__));
 extern void ecdh_free(ecdh_t *ecdh);
+extern size_t ecdh_size(ecdh_t *ecdh);
+extern size_t ecdh_shared_size(ecdh_t *ecdh);
 
 #endif

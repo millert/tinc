@@ -22,7 +22,6 @@
 #include "control_common.h"
 #include "crypto.h"
 #include "ecdsa.h"
-#include "ecdsagen.h"
 #include "ifconfig.h"
 #include "invitation.h"
 #include "names.h"
@@ -390,7 +389,7 @@ int cmd_invite(int argc, char *argv[]) {
 			return 1;
 		}
 
-		key = ecdsa_generate();
+		key = ecdsa_generate(get_key_type());
 
 		if(!key) {
 			return 1;
@@ -419,7 +418,7 @@ int cmd_invite(int argc, char *argv[]) {
 			fprintf(stderr, "Could not signal the tinc daemon. Please restart or reload it manually.\n");
 		}
 	} else {
-		key = ecdsa_read_pem_private_key(f);
+		key = ecdsa_read_pem_private_key(SPTPS_KEY_ECDSA, f);
 		fclose(f);
 
 		if(!key) {
@@ -883,7 +882,7 @@ make_names:
 	}
 
 	// Generate our key and send a copy to the server
-	ecdsa_t *key = ecdsa_generate();
+	ecdsa_t *key = ecdsa_generate(get_key_type());
 
 	if(!key) {
 		return false;
@@ -1177,7 +1176,7 @@ int cmd_join(int argc, char *argv[]) {
 	}
 
 	// Generate a throw-away key for the invitation.
-	ecdsa_t *key = ecdsa_generate();
+	ecdsa_t *key = ecdsa_generate(get_key_type());
 
 	if(!key) {
 		return 1;

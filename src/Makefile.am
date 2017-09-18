@@ -55,9 +55,8 @@ tincd_SOURCES = \
 	digest.h \
 	dropin.c dropin.h \
 	dummy_device.c \
-	ecdh.h \
-	ecdsa.h \
-	ecdsagen.h \
+	ecdh.h ecdh.c \
+	ecdsa.c ecdsa.h \
 	edge.c edge.h \
 	ethernet.h \
 	event.c event.h \
@@ -106,6 +105,8 @@ tincd_SOURCES = \
 tinc_SOURCES = \
 	conf.c conf.h \
 	dropin.c dropin.h \
+	ecdh.h ecdh.c \
+	ecdsa.c ecdsa.h \
 	fsck.c fsck.h \
 	ifconfig.c ifconfig.h \
 	info.c info.h \
@@ -197,17 +198,16 @@ tincd_SOURCES += \
 	openssl/cipher.c \
 	openssl/crypto.c \
 	openssl/digest.c openssl/digest.h \
-	openssl/ecdh.c \
-	openssl/ecdsa.c \
+	openssl/openssl_ecdh.c \
+	openssl/openssl_ecdsa.c \
 	openssl/prf.c \
 	openssl/rsa.c
 tinc_SOURCES += \
 	openssl/cipher.c \
 	openssl/crypto.c \
 	openssl/digest.c openssl/digest.h \
-	openssl/ecdh.c \
-	openssl/ecdsa.c \
-	openssl/ecdsagen.c \
+	openssl/openssl_ecdh.c \
+	openssl/openssl_ecdsa.c \
 	openssl/prf.c \
 	openssl/rsa.c \
 	openssl/rsagen.c
@@ -215,20 +215,18 @@ sptps_test_SOURCES += \
 	openssl/cipher.c \
 	openssl/crypto.c \
 	openssl/digest.c openssl/digest.h \
-	openssl/ecdh.c \
-	openssl/ecdsa.c \
+	openssl/openssl_ecdh.c \
+	openssl/openssl_ecdsa.c \
 	openssl/prf.c
 sptps_keypair_SOURCES += \
 	openssl/crypto.c \
-	openssl/ecdh.c \
-	openssl/ecdsa.c \
-	openssl/ecdsagen.c
+	openssl/openssl_ecdh.c \
+	openssl/openssl_ecdsa.c
 sptps_speed_SOURCES += \
 	openssl/crypto.c \
 	openssl/digest.c openssl/digest.h \
-	openssl/ecdh.c \
-	openssl/ecdsa.c \
-	openssl/ecdsagen.c \
+	openssl/openssl_ecdh.c \
+	openssl/openssl_ecdsa.c \
 	openssl/prf.c
 else
 if GCRYPT

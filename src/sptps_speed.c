@@ -25,7 +25,6 @@
 #include "crypto.h"
 #include "ecdh.h"
 #include "ecdsa.h"
-#include "ecdsagen.h"
 #include "sptps.h"
 
 // Symbols necessary to link with logger.o
