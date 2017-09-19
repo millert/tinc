@@ -21,44 +21,49 @@
 
 #include "ed25519.h"
 
-#define TINC_ECDSA_INTERNAL
 typedef struct {
 	uint8_t private[64];
 	uint8_t public[32];
-} ecdsa_t;
+} ecdsa_impl_t;
 
 #include "../logger.h"
+#include "../crypto.h"
 #include "../ecdsa.h"
 #include "../utils.h"
 #include "../xalloc.h"
 
 // Get and set ECDSA keys
 //
-ecdsa_t *ecdsa_set_base64_public_key(const char *p) {
-	int len = strlen(p);
-
-	if(len != 43) {
-		logger(DEBUG_ALWAYS, LOG_ERR, "Invalid size %d for public key!", len);
-		return 0;
-	}
-
-	ecdsa_t *ecdsa = xzalloc(sizeof(*ecdsa));
-	len = b64decode(p, ecdsa->public, len);
-
+static void *ed25519_ecdsa_set_public_key(const char *pubkey, int len) {
 	if(len != 32) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "Invalid format of public key! len = %d", len);
-		free(ecdsa);
 		return 0;
 	}
+	ecdsa_impl_t *ecdsa = xzalloc(sizeof(*ecdsa));
+	memcpy(ecdsa->public, pubkey, len);
 
 	return ecdsa;
 }
 
-char *ecdsa_get_base64_public_key(ecdsa_t *ecdsa) {
-	char *base64 = xmalloc(44);
-	b64encode(ecdsa->public, base64, sizeof(ecdsa->public));
+static char *ed25519_ecdsa_get_public_key(void *v, int *len) {
+	ecdsa_impl_t *ecdsa = v;
+	char *pubkey = xzalloc(sizeof(ecdsa->public));
+	memcpy(pubkey, ecdsa->public, sizeof(ecdsa->public));
+	*len = sizeof(ecdsa->public);
 
-	return base64;
+	return pubkey;
+}
+
+// Generate ECDSA key
+
+static void *ed25519_ecdsa_generate(void) {
+	ecdsa_impl_t *ecdsa = xzalloc(sizeof(*ecdsa));
+
+	uint8_t seed[32];
+	randomize(seed, sizeof(seed));
+	ed25519_create_keypair(ecdsa->public, ecdsa->private, seed);
+
+	return ecdsa;
 }
 
 // Read PEM ECDSA keys
@@ -120,9 +125,8 @@ static bool read_pem(FILE *fp, const char *type, void *buf, size_t size) {
 	return true;
 }
 
-ecdsa_t *ecdsa_read_pem_public_key(FILE *fp) {
-	ecdsa_t *ecdsa = xzalloc(sizeof(*ecdsa));
-
+static void *ed25519_ecdsa_read_pem_public_key(FILE *fp) {
+	ecdsa_impl_t *ecdsa = xzalloc(sizeof(*ecdsa));
 	if(read_pem(fp, "ED25519 PUBLIC KEY", ecdsa->public, sizeof(ecdsa->public))) {
 		return ecdsa;
 	}
@@ -131,9 +135,8 @@ ecdsa_t *ecdsa_read_pem_public_key(FILE *fp) {
 	return 0;
 }
 
-ecdsa_t *ecdsa_read_pem_private_key(FILE *fp) {
-	ecdsa_t *ecdsa = xmalloc(sizeof(*ecdsa));
-
+static void *ed25519_ecdsa_read_pem_private_key(FILE *fp) {
+	ecdsa_impl_t *ecdsa = xmalloc(sizeof(*ecdsa));
 	if(read_pem(fp, "ED25519 PRIVATE KEY", ecdsa->private, sizeof(*ecdsa))) {
 		return ecdsa;
 	}
@@ -142,25 +145,66 @@ ecdsa_t *ecdsa_read_pem_private_key(FILE *fp) {
 	return 0;
 }
 
-size_t ecdsa_size(ecdsa_t *ecdsa) {
+// Write PEM ECDSA keys
+
+static bool write_pem(FILE *fp, const char *type, void *buf, size_t size) {
+	fprintf(fp, "-----BEGIN %s-----\n", type);
+
+	char base64[65];
+	while(size) {
+		size_t todo = size > 48 ? 48 : size;
+		b64encode(buf, base64, todo);
+		fprintf(fp, "%s\n", base64);
+		buf += todo;
+		size -= todo;
+	}
+
+	fprintf(fp, "-----END %s-----\n", type);
+	return !ferror(fp);
+}
+
+static bool ed25519_ecdsa_write_pem_public_key(void *v, FILE *fp) {
+	ecdsa_impl_t *ecdsa = v;
+	return write_pem(fp, "ED25519 PUBLIC KEY", ecdsa->public, sizeof(ecdsa->public));
+}
+
+static bool ed25519_ecdsa_write_pem_private_key(void *v, FILE *fp) {
+	ecdsa_impl_t *ecdsa = v;
+	return write_pem(fp, "ED25519 PRIVATE KEY", ecdsa->private, sizeof(*ecdsa));
+}
+
+static size_t ed25519_ecdsa_size(void *v) {
 	return 64;
 }
 
 // TODO: standardise output format?
 
-bool ecdsa_sign(ecdsa_t *ecdsa, const void *in, size_t len, void *sig) {
+static bool ed25519_ecdsa_sign(void *v, const void *in, size_t len, void *sig) {
+	ecdsa_impl_t *ecdsa = v;
 	ed25519_sign(sig, in, len, ecdsa->public, ecdsa->private);
 	return true;
 }
 
-bool ecdsa_verify(ecdsa_t *ecdsa, const void *in, size_t len, const void *sig) {
+static bool ed25519_ecdsa_verify(void *v, const void *in, size_t len, const void *sig) {
+	ecdsa_impl_t *ecdsa = v;
 	return ed25519_verify(sig, in, len, ecdsa->public);
 }
 
-bool ecdsa_active(ecdsa_t *ecdsa) {
-	return ecdsa;
-}
-
-void ecdsa_free(ecdsa_t *ecdsa) {
+static void ed25519_ecdsa_free(void *v) {
+	ecdsa_impl_t *ecdsa = v;
 	free(ecdsa);
 }
+
+struct ecdsa_operations ed25519_ecdsa_operations = {
+	ed25519_ecdsa_set_public_key,
+	ed25519_ecdsa_get_public_key,
+	ed25519_ecdsa_generate,
+	ed25519_ecdsa_read_pem_public_key,
+	ed25519_ecdsa_read_pem_private_key,
+	ed25519_ecdsa_write_pem_public_key,
+	ed25519_ecdsa_write_pem_private_key,
+	ed25519_ecdsa_size,
+	ed25519_ecdsa_sign,
+	ed25519_ecdsa_verify,
+	ed25519_ecdsa_free
+};

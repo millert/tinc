@@ -75,6 +75,8 @@ bool ecdh_generate_public(ecdh_t *ecdh, void *pubkey) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "%s called with unallocated ecdh", __func__);
 		return false;
 	}
+	if (ecdh->key)
+		ecdh->ops->free(ecdh->key);
 	ecdh->key = ecdh->ops->generate_public(pubkey);
 	return ecdh->key != NULL;
 }
