@@ -21,17 +21,27 @@
 
 #include "ed25519.h"
 
-#define __TINC_ECDH_INTERNAL__
-typedef struct ecdh_t {
-	uint8_t private[64];
-} ecdh_t;
+#define ECDH_SIZE 32
+#define ECDH_SHARED_SIZE 32
 
 #include "../crypto.h"
 #include "../ecdh.h"
 #include "../xalloc.h"
 
-ecdh_t *ecdh_generate_public(void *pubkey) {
-	ecdh_t *ecdh = xzalloc(sizeof *ecdh);
+typedef struct {
+	uint8_t private[64];
+} ecdh_impl_t;
+
+static size_t ed25519_ecdh_size(void) {
+	return ECDH_SIZE;
+}
+
+static size_t ed25519_ecdh_shared_size(void) {
+	return ECDH_SHARED_SIZE;
+}
+
+static void *ed25519_ecdh_generate_public(void *pubkey) {
+	ecdh_impl_t *ecdh = xzalloc(sizeof *ecdh);
 
 	uint8_t seed[32];
 	randomize(seed, sizeof seed);
@@ -40,12 +50,22 @@ ecdh_t *ecdh_generate_public(void *pubkey) {
 	return ecdh;
 }
 
-bool ecdh_compute_shared(ecdh_t *ecdh, const void *pubkey, void *shared) {
+static bool ed25519_ecdh_compute_shared(void *v, const void *pubkey, void *shared) {
+	ecdh_impl_t *ecdh = v;
 	ed25519_key_exchange(shared, pubkey, ecdh->private);
 	free(ecdh);
 	return true;
 }
 
-void ecdh_free(ecdh_t *ecdh) {
+static void ed25519_ecdh_free(void *v) {
+	ecdh_impl_t *ecdh = v;
 	free(ecdh);
 }
+
+struct ecdh_operations ed25519_ecdh_operations = {
+	ed25519_ecdh_size,
+	ed25519_ecdh_shared_size,
+	ed25519_ecdh_generate_public,
+	ed25519_ecdh_compute_shared,
+	ed25519_ecdh_free
+};
