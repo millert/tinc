@@ -75,8 +75,6 @@ bool ecdh_generate_public(ecdh_t *ecdh, void *pubkey) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "%s called with unallocated ecdh", __func__);
 		return false;
 	}
-	if (ecdh->key)
-		ecdh->ops->free(ecdh->key);
 	ecdh->key = ecdh->ops->generate_public(pubkey);
 	return ecdh->key != NULL;
 }
@@ -86,7 +84,9 @@ bool ecdh_compute_shared(ecdh_t *ecdh, const void *pubkey, void *shared) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "%s called with unallocated ecdh", __func__);
 		return false;
 	}
-	return ecdh->ops->compute_shared(ecdh->key, pubkey, shared);
+	bool ret = ecdh->ops->compute_shared(ecdh->key, pubkey, shared);
+	free(ecdh);
+	return ret;
 }
 
 void ecdh_free(ecdh_t *ecdh) {
