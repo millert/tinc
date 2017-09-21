@@ -263,9 +263,9 @@ bool sptps_init_ciphers(sptps_t *s)
 		ret = (s->incipher && s->outcipher);
 	}
 	if (strcmp(cipher, "aes-256-gcm") == 0) {
-		s->incipher = cipher_open_by_name(cipher);
+		s->incipher = cipher_open_by_name("aes-256-gcm");
 		s->incipher_gcm = true;
-		s->outcipher = cipher_open_by_name(cipher);
+		s->outcipher = cipher_open_by_name("aes-256-gcm");
 		s->outcipher_gcm = true;
 		ret = (s->incipher && s->outcipher);
 	}
@@ -282,7 +282,9 @@ static bool generate_key_material(sptps_t *s, const char *shared, size_t len) {
 	}
 
 	// Allocate memory for key material
-	size_t keylen = cipher_keylength(s->incipher) + cipher_keylength(s->outcipher);
+	size_t keylen = 0;
+	keylen += s->incipher_gcm ? cipher_keylength(s->incipher) : CHACHA_POLY1305_KEYLEN;
+	keylen += s->outcipher_gcm ? cipher_keylength(s->outcipher) : CHACHA_POLY1305_KEYLEN;
 
 	s->key = realloc(s->key, keylen);
 	if(!s->key)
@@ -317,13 +319,22 @@ static bool receive_ack(sptps_t *s, const char *data, uint16_t len) {
 	if(len)
 		return error(s, EIO, "Invalid ACK record length");
 
+	bool ret;
 	if(s->initiator) {
-		if(!cipher_set_counter_key(s->incipher, s->key))
-			return error(s, EINVAL, "Failed to set counter");
+		if (s->incipher_gcm) {
+			ret = cipher_set_counter_key(s->incipher, s->key);
+		} else {
+			ret = chacha_poly1305_set_key(s->incipher, s->key);
+		}
 	} else {
-		if(!cipher_set_counter_key(s->incipher, s->key + cipher_keylength(s->outcipher)))
-			return error(s, EINVAL, "Failed to set counter");
+		if (s->incipher_gcm) {
+			ret = cipher_set_counter_key(s->incipher, s->key + cipher_keylength(s->outcipher));
+		} else {
+			ret = chacha_poly1305_set_key(s->incipher, s->key + CHACHA_POLY1305_KEYLEN);
+		}
 	}
+	if(!ret)
+		return error(s, EINVAL, "Failed to set counter");
 
 	free(s->key);
 	s->key = NULL;
@@ -395,13 +406,22 @@ static bool receive_sig(sptps_t *s, const char *data, uint16_t len) {
 		return false;
 
 	// TODO: only set new keys after ACK has been set/received
+	bool ret;
 	if(s->initiator) {
-		if(!cipher_set_counter_key(s->outcipher, s->key + cipher_keylength(s->incipher)))
-			return error(s, EINVAL, "Failed to set counter");
+		if (s->outcipher_gcm) {
+			ret = cipher_set_counter_key(s->outcipher, s->key + cipher_keylength(s->incipher));
+		} else {
+			ret = chacha_poly1305_set_key(s->outcipher, s->key + CHACHA_POLY1305_KEYLEN);
+		}
 	} else {
-		if(!cipher_set_counter_key(s->outcipher, s->key))
-			return error(s, EINVAL, "Failed to set counter");
+		if (s->outcipher_gcm) {
+			ret = cipher_set_counter_key(s->outcipher, s->key);
+		} else {
+			ret = chacha_poly1305_set_key(s->outcipher, s->key);
+		}
 	}
+	if(!ret)
+		return error(s, EINVAL, "Failed to set counter");
 
 	return true;
 }
@@ -732,8 +752,14 @@ bool sptps_start(sptps_t *s, void *handle, bool initiator, bool datagram, ecdsa_
 // Stop a SPTPS session.
 bool sptps_stop(sptps_t *s) {
 	// Clean up any resources.
-	cipher_close(s->incipher);
-	cipher_close(s->outcipher);
+	if (s->incipher_gcm)
+		cipher_close(s->incipher);
+	else
+		chacha_poly1305_exit(s->incipher);
+	if (s->outcipher_gcm)
+		cipher_close(s->outcipher);
+	else
+		chacha_poly1305_exit(s->outcipher);
 	ecdh_free(s->ecdh);
 	free(s->inbuf);
 	free(s->mykex);
