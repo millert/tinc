@@ -235,6 +235,7 @@ sptps_keypair_SOURCES += \
 	openssl/openssl_ecdh.c \
 	openssl/openssl_ecdsa.c
 sptps_speed_SOURCES += \
+	openssl/cipher.c \
 	openssl/crypto.c \
 	openssl/digest.c openssl/digest.h \
 	openssl/openssl_ecdh.c \

@@ -80,7 +80,9 @@ static bool receive_record(void *handle, uint8_t type, const void *data, uint16_
 }
 
 static struct option const long_options[] = {
+	{"cipher", required_argument, NULL, 'c'},
 	{"datagram", no_argument, NULL, 'd'},
+	{"key-type", required_argument, NULL, 'k'},
 	{"quit", no_argument, NULL, 'q'},
 	{"readonly", no_argument, NULL, 'r'},
 	{"writeonly", no_argument, NULL, 'w'},
@@ -97,9 +99,11 @@ const char *program_name;
 static void usage() {
 	fprintf(stderr, "Usage: %s [options] my_ecdsa_key_file his_ecdsa_key_file [host] port\n\n", program_name);
 	fprintf(stderr, "Valid options are:\n"
-	        "  -d, --datagram          Enable datagram mode.\n"
-	        "  -q, --quit              Quit when EOF occurs on stdin.\n"
-	        "  -r, --readonly          Only send data from the socket to stdout.\n"
+		"  -c, --cipher            Cipher, either aes-256-gcm or chacha20-poly1305.\n"
+		"  -d, --datagram          Enable datagram mode.\n"
+		"  -k, --key-type          Key type, either ecdsa or ed25519.\n"
+		"  -q, --quit              Quit when EOF occurs on stdin.\n"
+		"  -r, --readonly          Only send data from the socket to stdout.\n"
 #ifdef HAVE_LINUX
 	        "  -t, --tun               Use a tun device instead of stdio.\n"
 #endif
@@ -124,16 +128,40 @@ int main(int argc, char *argv[]) {
 	int packetloss = 0;
 	int r;
 	int option_index = 0;
+	int keytype = SPTPS_KEY_ED25519;
 	ecdsa_t *mykey = NULL, *hiskey = NULL;
+	int ciphertype = SPTPS_CIPHER_CHACHA20_POLY1305;
 	bool quit = false;
 
-	while((r = getopt_long(argc, argv, "dqrstwL:W:v46", long_options, &option_index)) != EOF) {
-		switch(r) {
+	while((r = getopt_long(argc, argv, "c:dk:qrstwL:W:v46", long_options, &option_index)) != EOF) {
+		switch (r) {
 		case 0:   /* long option */
+			break;
+
+		case 'c': /* cipher type */
+			ciphertype = sptps_parse_cipher(optarg);
+			if (!ciphertype) {
+				fprintf(stderr, "unsupported cipher %s.\n", optarg);
+				usage();
+				return 1;
+			}
 			break;
 
 		case 'd': /* datagram mode */
 			datagram = true;
+			break;
+
+		case 'k': /* key type */
+			if (strcasecmp(optarg, "ecdsa") == 0) {
+				keytype = SPTPS_KEY_ECDSA;
+
+			} else if (strcasecmp(optarg, "ed25519") == 0) {
+				keytype = SPTPS_KEY_ED25519;
+			} else {
+				fprintf(stderr, "unsupported key type %s.\n", optarg);
+				usage();
+				return 1;
+			}
 			break;
 
 		case 'q': /* close connection on EOF from stdin */
@@ -324,7 +352,7 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 
-	if(!(mykey = ecdsa_read_pem_private_key(fp))) {
+	if(!(mykey = ecdsa_read_pem_private_key(keytype, fp))) {
 		return 1;
 	}
 
@@ -337,7 +365,7 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 
-	if(!(hiskey = ecdsa_read_pem_public_key(fp))) {
+	if(!(hiskey = ecdsa_read_pem_public_key(keytype, fp))) {
 		return 1;
 	}
 
@@ -349,7 +377,7 @@ int main(int argc, char *argv[]) {
 
 	sptps_t s;
 
-	if(!sptps_start(&s, &sock, initiator, datagram, mykey, hiskey, "sptps_test", 10, send_data, receive_record)) {
+	if(!sptps_start(&s, &sock, initiator, datagram, ciphertype, mykey, hiskey, "sptps_test", 10, send_data, receive_record)) {
 		return 1;
 	}
 

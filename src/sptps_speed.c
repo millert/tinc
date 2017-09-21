@@ -20,6 +20,7 @@
 #include "system.h"
 #include "utils.h"
 
+#include <getopt.h>
 #include <poll.h>
 
 #include "crypto.h"
@@ -89,11 +90,74 @@ static bool clock_countto(double seconds) {
 	return false;
 }
 
+static struct option const long_options[] = {
+	{"cipher", required_argument, NULL, 'c'},
+	{"key-type", required_argument, NULL, 'k'},
+	{"help", no_argument, NULL, 1},
+	{NULL, 0, NULL, 0}
+};
+
+const char *program_name;
+
+static void usage() {
+	fprintf(stderr, "Usage: %s [options] my_ecdsa_key_file his_ecdsa_key_file [host] port\n\n", program_name);
+	fprintf(stderr, "Valid options are:\n"
+			"  -c, --cipher    Cipher, either aes-256-gcm or chacha20-poly1305.\n"
+			"  -k, --key-type  Key type, either ecdsa or ed25519.\n"
+			"  -h, --help      Display this help and exit.\n"
+			"\n");
+	fprintf(stderr, "Report bugs to tinc@tinc-vpn.org.\n");
+}
+
 int main(int argc, char *argv[]) {
 	ecdsa_t *key1, *key2;
 	ecdh_t *ecdh1, *ecdh2;
 	sptps_t sptps1, sptps2;
 	char buf1[4096], buf2[4096], buf3[4096];
+	int keytype = SPTPS_KEY_ED25519;
+	int ciphertype = SPTPS_CIPHER_CHACHA20_POLY1305;
+	int option_index = 0;
+	int r;
+
+	program_name = argv[0];
+
+	while((r = getopt_long(argc, argv, "c:hk:", long_options, &option_index)) != EOF) {
+		switch (r) {
+			case 0: /* long option */
+				break;
+
+			case 'c': /* cipher type */
+				ciphertype = sptps_parse_cipher(optarg);
+				if (!ciphertype) {
+					fprintf(stderr, "unsupported cipher %s.\n", optarg);
+					usage();
+					return 1;
+				}
+				break;
+
+			case 'k': /* key type */
+				if (strcasecmp(optarg, "ecdsa") == 0) {
+					keytype = SPTPS_KEY_ECDSA;
+				} else if (strcasecmp(optarg, "ed25519") == 0) {
+					keytype = SPTPS_KEY_ED25519;
+				} else {
+					fprintf(stderr, "unsupported key type %s.\n", optarg);
+					usage();
+					return 1;
+				}
+				break;
+			case '?': /* wrong options */
+				usage();
+				return 1;
+
+			default:
+				break;
+		}
+	}
+
+	argc -= optind - 1;
+	argv += optind - 1;
+
 	double duration = argc > 1 ? atof(argv[1]) : 10;
 
 	crypto_init();
@@ -105,15 +169,22 @@ int main(int argc, char *argv[]) {
 	// Key generation
 
 	fprintf(stderr, "Generating keys for %lg seconds: ", duration);
-
 	for(clock_start(); clock_countto(duration);) {
-		ecdsa_free(ecdsa_generate());
+		key1 = ecdsa_generate(keytype);
+		if (!key1) {
+			fprintf(stderr, "unable to generate key\n");
+			return 1;
+		}
+		ecdsa_free(key1);
 	}
-
 	fprintf(stderr, "%17.2lf op/s\n", rate);
 
-	key1 = ecdsa_generate();
-	key2 = ecdsa_generate();
+	key1 = ecdsa_generate(keytype);
+	key2 = ecdsa_generate(keytype);
+	if (!key1 || !key2) {
+		fprintf(stderr, "unable to generate keys\n");
+		return 1;
+	}
 
 	// ECDSA signatures
 
@@ -134,13 +205,23 @@ int main(int argc, char *argv[]) {
 
 	fprintf(stderr, "%18.2lf op/s\n", rate);
 
-	ecdh1 = ecdh_generate_public(buf1);
+	ecdh1 = ecdh_alloc(keytype);
+	if (!ecdh1) {
+		fprintf(stderr, "Could not allocate ecdh\n");
+		return 1;
+	}
+	if (!ecdh_generate_public(ecdh1, buf1)) {
+		fprintf(stderr, "Could not generate public key\n");
+		return 1;
+	}
 	fprintf(stderr, "ECDH for %lg seconds: ", duration);
 
 	for(clock_start(); clock_countto(duration);) {
-		ecdh2 = ecdh_generate_public(buf2);
-
-		if(!ecdh2) {
+		ecdh2 = ecdh_alloc(keytype);
+		if (!ecdh2) {
+			return 1;
+		}
+		if (!ecdh_generate_public(ecdh2, buf2)) {
 			return 1;
 		}
 
@@ -156,19 +237,20 @@ int main(int argc, char *argv[]) {
 
 	int fd[2];
 
+	/* XXX - use AF_INET for windows */
 	if(socketpair(AF_UNIX, SOCK_STREAM, 0, fd)) {
 		fprintf(stderr, "Could not create a UNIX socket pair: %s\n", sockstrerror(sockerrno));
 		return 1;
 	}
 
+	/* XXX - use select for windows */
 	struct pollfd pfd[2] = {{fd[0], POLLIN}, {fd[1], POLLIN}};
 
 	fprintf(stderr, "SPTPS/TCP authenticate for %lg seconds: ", duration);
 
 	for(clock_start(); clock_countto(duration);) {
-		sptps_start(&sptps1, fd + 0, true, false, key1, key2, "sptps_speed", 11, send_data, receive_record);
-		sptps_start(&sptps2, fd + 1, false, false, key2, key1, "sptps_speed", 11, send_data, receive_record);
-
+		sptps_start(&sptps1, fd + 0, true, false, ciphertype, key1, key2, "sptps_speed", 11, send_data, receive_record);
+		sptps_start(&sptps2, fd + 1, false, false, ciphertype, key2, key1, "sptps_speed", 11, send_data, receive_record);
 		while(poll(pfd, 2, 0)) {
 			if(pfd[0].revents) {
 				receive_data(&sptps1);
@@ -187,9 +269,8 @@ int main(int argc, char *argv[]) {
 
 	// SPTPS data
 
-	sptps_start(&sptps1, fd + 0, true, false, key1, key2, "sptps_speed", 11, send_data, receive_record);
-	sptps_start(&sptps2, fd + 1, false, false, key2, key1, "sptps_speed", 11, send_data, receive_record);
-
+	sptps_start(&sptps1, fd + 0, true, false, ciphertype, key1, key2, "sptps_speed", 11, send_data, receive_record);
+	sptps_start(&sptps2, fd + 1, false, false, ciphertype, key2, key1, "sptps_speed", 11, send_data, receive_record);
 	while(poll(pfd, 2, 0)) {
 		if(pfd[0].revents) {
 			receive_data(&sptps1);
@@ -236,9 +317,8 @@ int main(int argc, char *argv[]) {
 	fprintf(stderr, "SPTPS/UDP authenticate for %lg seconds: ", duration);
 
 	for(clock_start(); clock_countto(duration);) {
-		sptps_start(&sptps1, fd + 0, true, true, key1, key2, "sptps_speed", 11, send_data, receive_record);
-		sptps_start(&sptps2, fd + 1, false, true, key2, key1, "sptps_speed", 11, send_data, receive_record);
-
+		sptps_start(&sptps1, fd + 0, true, true, ciphertype, key1, key2, "sptps_speed", 11, send_data, receive_record);
+		sptps_start(&sptps2, fd + 1, false, true, ciphertype, key2, key1, "sptps_speed", 11, send_data, receive_record);
 		while(poll(pfd, 2, 0)) {
 			if(pfd[0].revents) {
 				receive_data(&sptps1);
@@ -257,8 +337,8 @@ int main(int argc, char *argv[]) {
 
 	// SPTPS datagram data
 
-	sptps_start(&sptps1, fd + 0, true, true, key1, key2, "sptps_speed", 11, send_data, receive_record);
-	sptps_start(&sptps2, fd + 1, false, true, key2, key1, "sptps_speed", 11, send_data, receive_record);
+	sptps_start(&sptps1, fd + 0, true, true, ciphertype, key1, key2, "sptps_speed", 11, send_data, receive_record);
+	sptps_start(&sptps2, fd + 1, false, true, ciphertype, key2, key1, "sptps_speed", 11, send_data, receive_record);
 
 	while(poll(pfd, 2, 0)) {
 		if(pfd[0].revents) {

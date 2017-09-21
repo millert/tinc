@@ -38,13 +38,15 @@ void logger(int level, int priority, const char *format, ...) {
 static void usage() {
 	fprintf(stderr, "Usage: %s [options] private_key_file public_key_file\n\n", program_name);
 	fprintf(stderr, "Valid options are:\n"
-	        "  --help  Display this help and exit.\n"
-	        "\n");
+		"  --help      Display this help and exit.\n"
+		"  --key-type  Key type, either ecdsa or ed25519.\n"
+		"\n");
 	fprintf(stderr, "Report bugs to tinc@tinc-vpn.org.\n");
 }
 
 static struct option const long_options[] = {
 	{"help", no_argument, NULL, 1},
+	{"key-type", required_argument, NULL, 2},
 	{NULL, 0, NULL, 0}
 };
 
@@ -52,6 +54,7 @@ int main(int argc, char *argv[]) {
 	program_name = argv[0];
 	int r;
 	int option_index = 0;
+	int keytype = SPTPS_KEY_ED25519;
 
 	while((r = getopt_long(argc, argv, "", long_options, &option_index)) != EOF) {
 		switch(r) {
@@ -65,6 +68,18 @@ int main(int argc, char *argv[]) {
 		case 1: /* help */
 			usage();
 			return 0;
+
+		case 2: /* key type */
+			if (strcasecmp(optarg, "ecdsa") == 0) {
+				keytype = SPTPS_KEY_ECDSA;
+			} else if (strcasecmp(optarg, "ed25519") == 0) {
+				keytype = SPTPS_KEY_ED25519;
+			} else {
+				fprintf(stderr, "unsupported key type %s.\n", optarg);
+				usage();
+				return 1;
+			}
+			break;
 
 		default:
 			break;
@@ -82,7 +97,7 @@ int main(int argc, char *argv[]) {
 
 	crypto_init();
 
-	ecdsa_t *key = ecdsa_generate();
+	ecdsa_t *key = ecdsa_generate(keytype);
 
 	if(!key) {
 		return 1;
