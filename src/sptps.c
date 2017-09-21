@@ -83,28 +83,36 @@ static void warning(sptps_t *s, const char *format, ...) {
 	va_end(ap);
 }
 
-static bool sptps_encrypt(sptps_t *s, uint32_t seqno, const void *header, size_t headerlen, const void *indata, size_t inlen, char *outdata) {
+static bool sptps_encrypt(sptps_t *s, uint32_t seqno, uint8_t type, bool store_len, const void *indata, size_t inlen, char *outdata) {
+	char *header = outdata;
+	size_t headerlen = 0;
+
+	/* Store record length (optional) and type. */
+	if (store_len) {
+		uint16_t netlen = htons(inlen);
+		headerlen = sizeof(netlen);
+		memcpy(header, &netlen, headerlen);
+	}
+	header[headerlen++] = type;
+
 	if (s->outcipher_gcm) {
 		seqno = htonl(seqno);
 		if(!cipher_set_counter(s->outcipher, &seqno, sizeof seqno))
 			return false;
 
-		if(headerlen != 0) {
-			if(!cipher_gcm_encrypt_start(s->outcipher, header, headerlen, outdata, NULL))
-				return false;
+		if(!cipher_gcm_encrypt_start(s->outcipher, header, headerlen, outdata, NULL))
+			return false;
 
-			if(!cipher_gcm_encrypt_finish(s->outcipher, indata, inlen, outdata + headerlen, NULL))
-				return false;
-		} else {
-			if(!cipher_gcm_encrypt(s->outcipher, indata, inlen, outdata, NULL))
-				return false;
-		}
+		if(!cipher_gcm_encrypt_finish(s->outcipher, indata, inlen, outdata + headerlen, NULL))
+			return false;
 	} else {
-		if(headerlen != 0) {
-			memcpy(outdata, header, headerlen);
-			memcpy(outdata + headerlen, indata, inlen);
+		/* Don't encrypt the record length for chacha_poly1305. */
+		if (store_len) {
+			outdata += 2;
+			headerlen -= 2;
 		}
-		chacha_poly1305_encrypt(s->outcipher, seqno, outdata, headerlen + inlen, outdata, NULL);
+		memcpy(outdata + headerlen, indata, inlen);
+		chacha_poly1305_encrypt(s->outcipher, seqno, outdata, inlen + headerlen, outdata, NULL);
 	}
 
 	return true;
@@ -144,7 +152,7 @@ static bool send_record_priv_datagram(sptps_t *s, uint8_t type, const void *data
 
 	if(s->outstate) {
 		// If first handshake has finished, encrypt and HMAC
-		if(!sptps_encrypt(s, seqno, &type, 1, data, len, buffer + 4))
+		if(!sptps_encrypt(s, seqno, type, false, data, len, buffer + 4))
 			return error(s, EINVAL, "Error encrypting record");
 
 		return s->send_data(s->handle, type, buffer, len + 21UL);
@@ -165,19 +173,18 @@ static bool send_record_priv(sptps_t *s, uint8_t type, const void *data, uint16_
 
 	// Create header with sequence number, length and record type
 	uint32_t seqno = s->outseqno++;
-	uint16_t netlen = htons(len);
-
-	memcpy(buffer, &netlen, 2);
-	buffer[2] = type;
 
 	if(s->outstate) {
 		// If first handshake has finished, encrypt and HMAC
-		if(!sptps_encrypt(s, seqno, buffer, 3, data, len, buffer))
+		if(!sptps_encrypt(s, seqno, type, true, data, len, buffer))
 			return error(s, EINVAL, "Error encrypting record");
 
 		return s->send_data(s->handle, type, buffer, len + 19UL);
 	} else {
 		// Otherwise send as plaintext
+		uint16_t netlen = htons(len);
+		memcpy(buffer, &netlen, 2);
+		buffer[2] = type;
 		memcpy(buffer + 3, data, len);
 		return s->send_data(s->handle, type, buffer, len + 3UL);
 	}
