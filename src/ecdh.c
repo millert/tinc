@@ -37,18 +37,14 @@ typedef struct ecdh {
 #include "xalloc.h"
 
 extern struct ecdh_operations openssl_ecdh_operations;
-#ifdef notyet
 extern struct ecdh_operations ed25519_ecdh_operations;
-#endif
 
 ecdh_t *ecdh_alloc(int keytype) {
 	struct ecdh_operations *ops;
 	switch (keytype) {
-#ifdef notyet
 	case SPTPS_KEY_ED25519:
 		ops = &ed25519_ecdh_operations;
 		break;
-#endif
 	case SPTPS_KEY_ECDSA:
 		ops = &openssl_ecdh_operations;
 		break;
