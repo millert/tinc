@@ -119,7 +119,13 @@ bool send_req_key(node_t *to) {
 		to->status.waitingforkey = true;
 		to->last_req_key = now.tv_sec;
 		to->incompression = myself->incompression;
-		return sptps_start(&to->sptps, to, true, true, myself->connection->ecdsa, to->ecdsa, label, sizeof(label), send_initial_sptps_data, receive_sptps_record);
+
+		char *cipher = NULL;
+		get_config_string(lookup_config(config_tree, "SptpsCipher"), &cipher);
+		int ciphertype = sptps_parse_cipher(cipher);
+		free(cipher);
+
+		return sptps_start(&to->sptps, to, true, true, ciphertype, myself->connection->ecdsa, to->ecdsa, label, sizeof(label), send_initial_sptps_data, receive_sptps_record);
 	}
 
 	return send_request(to->nexthop->connection, "%d %s %s", REQ_KEY, myself->name, to->name);

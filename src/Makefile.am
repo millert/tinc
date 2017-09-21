@@ -105,7 +105,6 @@ tincd_SOURCES = \
 	$(chacha_poly1305_SOURCES)
 
 tinc_SOURCES = \
-	conf.c conf.h \
 	dropin.c dropin.h \
 	ecdh.h ecdh.c \
 	ecdsa.c ecdsa.h \

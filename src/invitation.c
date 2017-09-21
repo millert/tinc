@@ -1269,7 +1269,7 @@ next:
 	}
 
 	// Start an SPTPS session
-	if(!sptps_start(&sptps, NULL, true, false, key, hiskey, "tinc invitation", 15, invitation_send, invitation_receive)) {
+	if(!sptps_start(&sptps, NULL, true, false, get_cipher_type(), key, hiskey, "tinc invitation", 15, invitation_send, invitation_receive)) {
 		return 1;
 	}
 

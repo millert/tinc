@@ -377,7 +377,12 @@ bool id_h(connection_t *c, const char *request) {
 
 		c->protocol_minor = 2;
 
-		return sptps_start(&c->sptps, c, false, false, invitation_key, c->ecdsa, "tinc invitation", 15, send_meta_sptps, receive_invitation_sptps);
+		char *cipher = NULL;
+		get_config_string(lookup_config(config_tree, "SptpsCipher"), &cipher);
+		int ciphertype = sptps_parse_cipher(cipher);
+		free(cipher);
+
+		return sptps_start(&c->sptps, c, false, false, ciphertype, invitation_key, c->ecdsa, "tinc invitation", 15, send_meta_sptps, receive_invitation_sptps);
 	}
 
 	/* Check if identity is a valid name */
@@ -464,7 +469,12 @@ bool id_h(connection_t *c, const char *request) {
 			snprintf(label, sizeof(label), "tinc TCP key expansion %s %s", c->name, myself->name);
 		}
 
-		return sptps_start(&c->sptps, c, c->outgoing, false, myself->connection->ecdsa, c->ecdsa, label, sizeof(label), send_meta_sptps, receive_meta_sptps);
+		char *cipher = NULL;
+		get_config_string(lookup_config(config_tree, "SptpsCipher"), &cipher);
+		int ciphertype = sptps_parse_cipher(cipher);
+		free(cipher);
+
+		return sptps_start(&c->sptps, c, c->outgoing, false, ciphertype, myself->connection->ecdsa, c->ecdsa, label, sizeof(label), send_meta_sptps, receive_meta_sptps);
 	} else {
 		return send_metakey(c);
 	}

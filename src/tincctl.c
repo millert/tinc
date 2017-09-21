@@ -1679,6 +1679,38 @@ ecdsa_t *get_pubkey(FILE *f) {
 	return NULL;
 }
 
+int get_cipher_type(void) {
+	int ciphertype = SPTPS_CIPHER_CHACHA20_POLY1305;
+	FILE *f = fopen(tinc_conf, "r");
+	if(!f) {
+		return ciphertype;
+	}
+
+	char buf[4096];
+	char *value;
+	while(fgets(buf, sizeof buf, f)) {
+		int len = strcspn(buf, "\t =");
+		value = buf + len;
+		value += strspn(value, "\t ");
+		if(*value == '=') {
+			value++;
+			value += strspn(value, "\t ");
+		}
+		if(!rstrip(value))
+			continue;
+		buf[len] = 0;
+		if(strcasecmp(buf, "SptpsCipher"))
+			continue;
+		if(*value) {
+			ciphertype = sptps_parse_cipher(value);
+			break;
+		}
+	}
+
+	fclose(f);
+	return ciphertype;
+}
+
 int get_key_type(void) {
 	int keytype = SPTPS_KEY_ED25519;
 	FILE *f = fopen(tinc_conf, "r");
