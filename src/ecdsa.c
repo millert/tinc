@@ -31,9 +31,7 @@ typedef struct {
 #include "xalloc.h"
 
 extern struct ecdsa_operations openssl_ecdsa_operations;
-#ifdef notyet
 extern struct ecdsa_operations ed25519_ecdsa_operations;
-#endif
 
 // Get and set ECDSA keys
 //
@@ -41,12 +39,8 @@ extern struct ecdsa_operations ed25519_ecdsa_operations;
 static ecdsa_t *ecdsa_set_public_key(const char *pubkey, int len) {
 	ecdsa_t *ecdsa = xzalloc(sizeof *ecdsa);
 	if (len == 32) {
-#ifdef notyet
 		// ed25519
 		ecdsa->ops = &ed25519_ecdsa_operations;
-#else
-		return NULL;
-#endif
 	} else {
 		// openssl
 		ecdsa->ops = &openssl_ecdsa_operations;
@@ -87,11 +81,9 @@ ecdsa_t *ecdsa_read_pem_public_key(int keytype, FILE *fp) {
 	struct ecdsa_operations *ops;
 
 	switch (keytype) {
-#ifdef notyet
 	case SPTPS_KEY_ED25519:
 		ops = &ed25519_ecdsa_operations;
 		break;
-#endif
 	case SPTPS_KEY_ECDSA:
 		ops = &openssl_ecdsa_operations;
 		break;
@@ -113,11 +105,9 @@ ecdsa_t *ecdsa_read_pem_private_key(int keytype, FILE *fp) {
 	struct ecdsa_operations *ops;
 
 	switch (keytype) {
-#ifdef notyet
 	case SPTPS_KEY_ED25519:
 		ops = &ed25519_ecdsa_operations;
 		break;
-#endif
 	case SPTPS_KEY_ECDSA:
 		ops = &openssl_ecdsa_operations;
 		break;
@@ -171,10 +161,8 @@ int ecdsa_keytype(ecdsa_t *ecdsa) {
 	if (ecdsa != NULL) {
 		if (ecdsa->ops == &openssl_ecdsa_operations)
 			keytype = SPTPS_KEY_ECDSA;
-#ifdef notyet
 		else if (ecdsa->ops == &ed25519_ecdsa_operations)
 			keytype = SPTPS_KEY_ED25519;
-#endif
 	}
 	return keytype;
 }
@@ -183,11 +171,9 @@ ecdsa_t *ecdsa_generate(int keytype) {
 	struct ecdsa_operations *ops;
 
 	switch (keytype) {
-#ifdef notyet
 	case SPTPS_KEY_ED25519:
 		ops = &ed25519_ecdsa_operations;
 		break;
-#endif
 	case SPTPS_KEY_ECDSA:
 		ops = &openssl_ecdsa_operations;
 		break;
