@@ -52,6 +52,7 @@ extern int check_port(char *name);
 extern FILE *fopenmask(const char *filename, const char *mode, mode_t perms);
 extern ecdsa_t *get_pubkey(FILE *f);
 extern int get_key_type(void);
+extern int get_cipher_type(void);
 
 #endif
 

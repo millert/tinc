@@ -22,14 +22,12 @@
 
 #include "chacha-poly1305/chacha-poly1305.h"
 #include "cipher.h"
-#include "conf.h"
 #include "crypto.h"
 #include "ecdh.h"
 #include "ecdsa.h"
 #include "logger.h"
 #include "prf.h"
 #include "sptps.h"
-#include "xalloc.h"
 
 unsigned int sptps_replaywin = 16;
 
@@ -95,7 +93,7 @@ static bool sptps_encrypt(sptps_t *s, uint32_t seqno, uint8_t type, bool store_l
 	}
 	header[headerlen++] = type;
 
-	if (s->outcipher_gcm) {
+	if (s->ciphertype == SPTPS_CIPHER_AES_256_GCM) {
 		seqno = htonl(seqno);
 		if(!cipher_set_counter(s->outcipher, &seqno, sizeof seqno))
 			return false;
@@ -119,7 +117,7 @@ static bool sptps_encrypt(sptps_t *s, uint32_t seqno, uint8_t type, bool store_l
 }
 
 static bool sptps_decrypt(sptps_t *s, uint32_t seqno, const void *indata, size_t inlen, void *outdata, size_t *outlen) {
-	if (s->incipher_gcm) {
+	if (s->ciphertype == SPTPS_CIPHER_AES_256_GCM) {
 		if (s->inprogress) {
 			// Decrypt in progress, finish it
 			if(!cipher_gcm_decrypt_finish(s->incipher, indata, inlen, outdata, outlen))
@@ -251,25 +249,22 @@ static bool send_sig(sptps_t *s) {
 	return send_record_priv(s, SPTPS_HANDSHAKE, sig, sizeof sig);
 }
 
-bool sptps_init_ciphers(sptps_t *s)
+static bool sptps_init_ciphers(sptps_t *s)
 {
-	char *cipher = NULL;
 	bool ret = false;
 
-	get_config_string(lookup_config(config_tree, "SptpsCipher"), &cipher);
-	if (cipher == NULL || strcmp(cipher, "chacha20-poly1305") == 0) {
+	switch (s->ciphertype) {
+	case SPTPS_CIPHER_CHACHA20_POLY1305:
 		s->incipher = chacha_poly1305_init();
 		s->outcipher = chacha_poly1305_init();
 		ret = (s->incipher && s->outcipher);
-	}
-	if (strcmp(cipher, "aes-256-gcm") == 0) {
+		break;
+	case SPTPS_CIPHER_AES_256_GCM:
 		s->incipher = cipher_open_by_name("aes-256-gcm");
-		s->incipher_gcm = true;
 		s->outcipher = cipher_open_by_name("aes-256-gcm");
-		s->outcipher_gcm = true;
 		ret = (s->incipher && s->outcipher);
+		break;
 	}
-	free(cipher);
 	return ret;
 }
 
@@ -282,9 +277,11 @@ static bool generate_key_material(sptps_t *s, const char *shared, size_t len) {
 	}
 
 	// Allocate memory for key material
-	size_t keylen = 0;
-	keylen += s->incipher_gcm ? cipher_keylength(s->incipher) : CHACHA_POLY1305_KEYLEN;
-	keylen += s->outcipher_gcm ? cipher_keylength(s->outcipher) : CHACHA_POLY1305_KEYLEN;
+	size_t keylen;
+	if (s->ciphertype == SPTPS_CIPHER_AES_256_GCM)
+		keylen = cipher_keylength(s->incipher) + cipher_keylength(s->outcipher);
+	else
+		keylen = 2 * CHACHA_POLY1305_KEYLEN;
 
 	s->key = realloc(s->key, keylen);
 	if(!s->key)
@@ -321,13 +318,13 @@ static bool receive_ack(sptps_t *s, const char *data, uint16_t len) {
 
 	bool ret;
 	if(s->initiator) {
-		if (s->incipher_gcm) {
+		if (s->ciphertype == SPTPS_CIPHER_AES_256_GCM) {
 			ret = cipher_set_counter_key(s->incipher, s->key);
 		} else {
 			ret = chacha_poly1305_set_key(s->incipher, s->key);
 		}
 	} else {
-		if (s->incipher_gcm) {
+		if (s->ciphertype == SPTPS_CIPHER_AES_256_GCM) {
 			ret = cipher_set_counter_key(s->incipher, s->key + cipher_keylength(s->outcipher));
 		} else {
 			ret = chacha_poly1305_set_key(s->incipher, s->key + CHACHA_POLY1305_KEYLEN);
@@ -408,13 +405,13 @@ static bool receive_sig(sptps_t *s, const char *data, uint16_t len) {
 	// TODO: only set new keys after ACK has been set/received
 	bool ret;
 	if(s->initiator) {
-		if (s->outcipher_gcm) {
+		if (s->ciphertype == SPTPS_CIPHER_AES_256_GCM) {
 			ret = cipher_set_counter_key(s->outcipher, s->key + cipher_keylength(s->incipher));
 		} else {
 			ret = chacha_poly1305_set_key(s->outcipher, s->key + CHACHA_POLY1305_KEYLEN);
 		}
 	} else {
-		if (s->outcipher_gcm) {
+		if (s->ciphertype == SPTPS_CIPHER_AES_256_GCM) {
 			ret = cipher_set_counter_key(s->outcipher, s->key);
 		} else {
 			ret = chacha_poly1305_set_key(s->outcipher, s->key);
@@ -606,7 +603,7 @@ static bool sptps_receive_data_datagram(sptps_t *s, const char *data, size_t len
 }
 
 static bool sptps_get_reclen(sptps_t *s, uint32_t seqno) {
-	if (s->incipher_gcm && s->instate) {
+	if (s->instate && s->ciphertype == SPTPS_CIPHER_AES_256_GCM) {
 		seqno = htonl(seqno);
 		if(!cipher_set_counter(s->incipher, &seqno, 4))
 			return false;
@@ -709,14 +706,23 @@ size_t sptps_receive_data(sptps_t *s, const void *data, size_t len) {
 	return total_read;
 }
 
+int sptps_parse_cipher(const char *cipher) {
+	if (cipher == NULL || strcasecmp(cipher, "chacha20-poly1305") == 0)
+		return SPTPS_CIPHER_CHACHA20_POLY1305;
+	if (strcasecmp(cipher, "aes-256-gcm") == 0)
+		return SPTPS_CIPHER_AES_256_GCM;
+	return SPTPS_CIPHER_INVALID;
+}
+
 // Start a SPTPS session.
-bool sptps_start(sptps_t *s, void *handle, bool initiator, bool datagram, ecdsa_t *mykey, ecdsa_t *hiskey, const void *label, size_t labellen, send_data_t send_data, receive_record_t receive_record) {
+bool sptps_start(sptps_t *s, void *handle, bool initiator, bool datagram, int ciphertype, ecdsa_t *mykey, ecdsa_t *hiskey, const void *label, size_t labellen, send_data_t send_data, receive_record_t receive_record) {
 	// Initialise struct sptps
 	memset(s, 0, sizeof *s);
 
 	s->handle = handle;
 	s->initiator = initiator;
 	s->datagram = datagram;
+	s->ciphertype = ciphertype;
 	s->mykey = mykey;
 	s->hiskey = hiskey;
 	s->replaywin = sptps_replaywin;
@@ -752,14 +758,13 @@ bool sptps_start(sptps_t *s, void *handle, bool initiator, bool datagram, ecdsa_
 // Stop a SPTPS session.
 bool sptps_stop(sptps_t *s) {
 	// Clean up any resources.
-	if (s->incipher_gcm)
+	if (s->ciphertype == SPTPS_CIPHER_AES_256_GCM) {
 		cipher_close(s->incipher);
-	else
-		chacha_poly1305_exit(s->incipher);
-	if (s->outcipher_gcm)
 		cipher_close(s->outcipher);
-	else
+	} else {
+		chacha_poly1305_exit(s->incipher);
 		chacha_poly1305_exit(s->outcipher);
+	}
 	ecdh_free(s->ecdh);
 	free(s->inbuf);
 	free(s->mykex);

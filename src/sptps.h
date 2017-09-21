@@ -28,6 +28,11 @@
 
 #define SPTPS_VERSION 0
 
+// Cipher types
+#define SPTPS_CIPHER_INVALID 0
+#define SPTPS_CIPHER_AES_256_GCM 1
+#define SPTPS_CIPHER_CHACHA20_POLY1305 2
+
 // Record types
 #define SPTPS_HANDSHAKE 128   // Key exchange and authentication
 #define SPTPS_ALERT 129       // Warning or error messages
@@ -48,6 +53,7 @@ typedef bool (*receive_record_t)(void *handle, uint8_t type, const void *data, u
 typedef struct sptps {
 	bool initiator;
 	bool datagram;
+	short ciphertype;
 	int state;
 
 	char *inbuf;
@@ -56,7 +62,6 @@ typedef struct sptps {
 
 	bool instate;
 	bool inprogress;
-	bool incipher_gcm;
 	void *incipher;
 	uint32_t inseqno;
 	uint32_t received;
@@ -65,7 +70,6 @@ typedef struct sptps {
 	char *late;
 
 	bool outstate;
-	bool outcipher_gcm;
 	void *outcipher;
 	uint32_t outseqno;
 
@@ -88,11 +92,12 @@ extern unsigned int sptps_replaywin;
 extern void sptps_log_quiet(sptps_t *s, int s_errno, const char *format, va_list ap);
 extern void sptps_log_stderr(sptps_t *s, int s_errno, const char *format, va_list ap);
 extern void (*sptps_log)(sptps_t *s, int s_errno, const char *format, va_list ap);
-extern bool sptps_start(sptps_t *s, void *handle, bool initiator, bool datagram, ecdsa_t *mykey, ecdsa_t *hiskey, const void *label, size_t labellen, send_data_t send_data, receive_record_t receive_record);
+extern bool sptps_start(sptps_t *s, void *handle, bool initiator, bool datagram, int ciphertype, ecdsa_t *mykey, ecdsa_t *hiskey, const void *label, size_t labellen, send_data_t send_data, receive_record_t receive_record);
 extern bool sptps_stop(sptps_t *s);
 extern bool sptps_send_record(sptps_t *s, uint8_t type, const void *data, uint16_t len);
 extern size_t sptps_receive_data(sptps_t *s, const void *data, size_t len);
 extern bool sptps_force_kex(sptps_t *s);
 extern bool sptps_verify_datagram(sptps_t *s, const void *data, size_t len);
+extern int sptps_parse_cipher(const char *cipher);
 
 #endif
