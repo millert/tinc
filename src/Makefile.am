@@ -141,7 +141,10 @@ sptps_test_SOURCES = \
 sptps_keypair_SOURCES = \
 	ecdsa.c ecdsa.h \
 	sptps_keypair.c \
-	utils.c utils.h
+	utils.c utils.h \
+	ed25519/ed25519_ecdh.c \
+	ed25519/ed25519_ecdsa.c \
+	$(ed25519_SOURCES)
 
 sptps_speed_SOURCES = \
 	ecdh.h ecdh.c \
