@@ -115,7 +115,6 @@ tinc_SOURCES = \
 	names.c names.h \
 	netutl.c netutl.h \
 	script.c script.h \
-	splay_tree.c splay_tree.h \
 	sptps.c sptps.h \
 	subnet_parse.c subnet.h \
 	tincctl.c tincctl.h \
