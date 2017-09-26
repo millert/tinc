@@ -2,7 +2,7 @@
 
 sbin_PROGRAMS = tincd tinc
 check_PROGRAMS = sptps_test sptps_keypair
-EXTRA_PROGRAMS = sptps_test sptps_keypair
+EXTRA_PROGRAMS = sptps_test sptps_keypair sptps_speed
 
 CLEANFILES = version_git.h
 
@@ -17,10 +17,6 @@ ${srcdir}/version.c: version_git.h
 ## Now a hack to appease some versions of BSD make that don't understand that "./foo" is the same as "foo".
 if BSD
 version.c: ${srcdir}/version.c
-endif
-
-if LINUX
-EXTRA_PROGRAMS += sptps_speed
 endif
 
 ed25519_SOURCES = \
@@ -275,7 +271,15 @@ tincd_LDFLAGS = -pthread
 endif
 
 tinc_LDADD = $(READLINE_LIBS) $(CURSES_LIBS)
+if MINGW
+sptps_speed_LDADD = -lpthread
+endif
+if LINUX
 sptps_speed_LDADD = -lrt
+endif
+if SOLARIS
+sptps_speed_LDADD = -lrt
+endif
 
 LIBS = @LIBS@ -lm $(CODE_COVERAGE_LIBS)
 
