@@ -64,6 +64,7 @@ extern bool experimental;
 
 extern int invitation_lifetime;
 extern ecdsa_t *invitation_key;
+extern int invitation_keytype;
 
 /* Maximum size of strings in a request.
  * scanf terminates %2048s with a NUL character,

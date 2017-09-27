@@ -313,7 +313,11 @@ int cmd_invite(int argc, char *argv[]) {
 	}
 		
 	ecdsa_t *key;
-	snprintf(filename, sizeof filename, "%s" SLASH "invitations" SLASH "ecdsa_key.priv", confbase);
+	const int keytype = get_key_type();
+	const char *privkey_file = "ed25519_key.priv";
+	if (keytype == SPTPS_KEY_ECDSA)
+		privkey_file = "ecdsa_key.priv";
+	snprintf(filename, sizeof filename, "%s" SLASH "invitations" SLASH "%s", confbase, privkey_file);
 
 	// Remove the key if there are no outstanding invitations.
 	if(!count)
@@ -327,7 +331,7 @@ int cmd_invite(int argc, char *argv[]) {
 			return 1;
 		}
 
-		key = ecdsa_generate(get_key_type());
+		key = ecdsa_generate(keytype);
 		if(!key)
 			return 1;
 		f = fopen(filename, "w");
@@ -337,7 +341,7 @@ int cmd_invite(int argc, char *argv[]) {
 		}
 		chmod(filename, 0600);
 		if(!ecdsa_write_pem_private_key(key, f)) {
-			fprintf(stderr, "Could not write ECDSA private key\n");
+			fprintf(stderr, "Could not write SPTPS private key\n");
 			fclose(f);
 			return 1;
 		}
@@ -346,7 +350,7 @@ int cmd_invite(int argc, char *argv[]) {
 		if(connect_tincd(false))
 			sendline(fd, "%d %d", CONTROL, REQ_RELOAD);
 	} else {
-		key = ecdsa_read_pem_private_key(SPTPS_KEY_ECDSA, f);
+		key = ecdsa_read_pem_private_key(keytype, f);
 		fclose(f);
 		if(!key)
 			fprintf(stderr, "Could not read private key from %s\n", filename);
@@ -745,7 +749,8 @@ make_names:
 	}
 
 	// Generate our key and send a copy to the server
-	ecdsa_t *key = ecdsa_generate(get_key_type());
+	const int keytype = get_key_type();
+	ecdsa_t *key = ecdsa_generate(keytype);
 	if(!key)
 		return false;
 
@@ -753,7 +758,10 @@ make_names:
 	if(!b64key)
 		return false;
 
-	snprintf(filename, sizeof filename, "%s" SLASH "ecdsa_key.priv", confbase);
+	const char *privkey_file = "ed25519_key.priv";
+	if (keytype == SPTPS_KEY_ECDSA)
+		privkey_file = "ecdsa_key.priv";
+	snprintf(filename, sizeof filename, "%s" SLASH "%s", confbase, privkey_file);
 	f = fopenmask(filename, "w", 0600);
 	if(!f)
 		return false;
@@ -767,7 +775,7 @@ make_names:
 
 	fclose(f);
 
-	fprintf(fh, "ECDSAPublicKey = %s\n", b64key);
+	fprintf(fh, "%s = %s\n", b64key, keytype == SPTPS_KEY_ECDSA ? "ECDSAPublicKey" : "Ed25519PublicKey");
 
 	sptps_send_record(&sptps, 1, b64key, strlen(b64key));
 	free(b64key);

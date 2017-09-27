@@ -101,8 +101,16 @@ static bool send_initial_sptps_data(void *handle, uint8_t type, const void *data
 
 bool send_req_key(node_t *to) {
 	if(to->status.sptps) {
-		if(!node_read_ecdsa_public_key(to)) {
-			logger(DEBUG_PROTOCOL, LOG_DEBUG, "No ECDSA key known for %s (%s)", to->name, to->hostname);
+		int keytype = SPTPS_KEY_ED25519;
+		char *str;
+		if (get_config_string(lookup_config(config_tree, "SptpsKeyType"), &str)) {
+			if (strcasecmp(str, "ecdsa") == 0)
+				keytype = SPTPS_KEY_ECDSA;
+			free(str);
+		}
+
+		if(!node_read_ecdsa_public_key(to, keytype)) {
+			logger(DEBUG_PROTOCOL, LOG_DEBUG, "No SPTPS key known for %s (%s)", to->name, to->hostname);
 			send_request(to->nexthop->connection, "%d %s %s %d", REQ_KEY, myself->name, to->name, REQ_PUBKEY);
 			return true;
 		}
@@ -174,11 +182,19 @@ static bool req_key_ext_h(connection_t *c, const char *request, node_t *from, no
 
 	/* The request is for us */
 
+	int keytype = SPTPS_KEY_ED25519;
+	char *str;
+	if (get_config_string(lookup_config(config_tree, "SptpsKeyType"), &str)) {
+		if (strcasecmp(str, "ecdsa") == 0)
+			keytype = SPTPS_KEY_ECDSA;
+		free(str);
+	}
+
 	switch(reqno) {
 		case REQ_PUBKEY: {
-			if(!node_read_ecdsa_public_key(from)) {
+			if(!node_read_ecdsa_public_key(from, keytype)) {
 				/* Request their key *before* we send our key back. Otherwise the first SPTPS packet from them will get dropped. */
-				logger(DEBUG_PROTOCOL, LOG_DEBUG, "Preemptively requesting ECDSA key for %s (%s)", from->name, from->hostname);
+				logger(DEBUG_PROTOCOL, LOG_DEBUG, "Preemptively requesting SPTPS key for %s (%s)", from->name, from->hostname);
 				send_request(from->nexthop->connection, "%d %s %s %d", REQ_KEY, myself->name, from->name, REQ_PUBKEY);
 			}
 			char *pubkey = ecdsa_get_base64_public_key(myself->connection->ecdsa);
@@ -188,7 +204,7 @@ static bool req_key_ext_h(connection_t *c, const char *request, node_t *from, no
 		}
 
 		case ANS_PUBKEY: {
-			if(node_read_ecdsa_public_key(from)) {
+			if(node_read_ecdsa_public_key(from, keytype)) {
 				logger(DEBUG_PROTOCOL, LOG_WARNING, "Got ANS_PUBKEY from %s (%s) even though we already have his pubkey", from->name, from->hostname);
 				return true;
 			}
@@ -199,14 +215,14 @@ static bool req_key_ext_h(connection_t *c, const char *request, node_t *from, no
 				return true;
 			}
 
-			logger(DEBUG_PROTOCOL, LOG_INFO, "Learned ECDSA public key from %s (%s)", from->name, from->hostname);
-			append_config_file(from->name, "ECDSAPublicKey", pubkey);
+			logger(DEBUG_PROTOCOL, LOG_INFO, "Learned SPTPS public key from %s (%s)", from->name, from->hostname);
+			append_config_file(from->name, keytype == SPTPS_KEY_ECDSA ? "ECDSAPublicKey" : "Ed25519PublicKey", pubkey);
 			return true;
 		}
 
 		case REQ_KEY: {
-			if(!node_read_ecdsa_public_key(from)) {
-				logger(DEBUG_PROTOCOL, LOG_DEBUG, "No ECDSA key known for %s (%s)", from->name, from->hostname);
+			if(!node_read_ecdsa_public_key(from, keytype)) {
+				logger(DEBUG_PROTOCOL, LOG_DEBUG, "No SPTPS key known for %s (%s)", from->name, from->hostname);
 				send_request(from->nexthop->connection, "%d %s %s %d", REQ_KEY, myself->name, from->name, REQ_PUBKEY);
 				return true;
 			}
