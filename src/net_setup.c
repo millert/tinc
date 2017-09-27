@@ -63,7 +63,7 @@ bool disablebuggypeers;
 char *scriptinterpreter;
 char *scriptextension;
 
-bool node_read_ecdsa_public_key(node_t *n) {
+bool node_read_ecdsa_public_key(node_t *n, int keytype) {
 	if(ecdsa_active(n->ecdsa)) {
 		return true;
 	}
@@ -72,6 +72,13 @@ bool node_read_ecdsa_public_key(node_t *n) {
 	FILE *fp;
 	char *pubname = NULL;
 	char *p;
+	char *conf_pubkey = "Ed25519PublicKey";
+	char *conf_pubkey_file = "Ed25519PublicKeyFile";
+
+	if (keytype == SPTPS_KEY_ECDSA) {
+		conf_pubkey = "ECDSAPublicKey";
+		conf_pubkey_file = "ECDSAPublicKeyFile";
+	}
 
 	init_configuration(&config_tree);
 
@@ -79,18 +86,17 @@ bool node_read_ecdsa_public_key(node_t *n) {
 		goto exit;
 	}
 
-	/* XXX - ED25519 support */
-	/* First, check for simple ECDSAPublicKey statement */
+	/* First, check for simple public key statement */
 
-	if(get_config_string(lookup_config(config_tree, "ECDSAPublicKey"), &p)) {
+	if(get_config_string(lookup_config(config_tree, conf_pubkey), &p)) {
 		n->ecdsa = ecdsa_set_base64_public_key(p);
 		free(p);
 		goto exit;
 	}
 
-	/* Else, check for ECDSAPublicKeyFile statement and read it */
+	/* Else, check for a public key file statement and read it */
 
-	if(!get_config_string(lookup_config(config_tree, "ECDSAPublicKeyFile"), &pubname)) {
+	if(!get_config_string(lookup_config(config_tree, conf_pubkey_file), &pubname)) {
 		xasprintf(&pubname, "%s" SLASH "hosts" SLASH "%s", confbase, n->name);
 	}
 
@@ -100,7 +106,7 @@ bool node_read_ecdsa_public_key(node_t *n) {
 		goto exit;
 	}
 
-	n->ecdsa = ecdsa_read_pem_public_key(SPTPS_KEY_ECDSA, fp);
+	n->ecdsa = ecdsa_read_pem_public_key(keytype, fp);
 	fclose(fp);
 
 exit:
@@ -117,6 +123,8 @@ bool read_ecdsa_public_key(connection_t *c) {
 	FILE *fp;
 	char *fname;
 	char *p;
+	char *conf_pubkey = "Ed25519PublicKey";
+	char *conf_pubkey_file = "Ed25519PublicKeyFile";
 	int keytype = SPTPS_KEY_ED25519;
 
 	if(!c->config_tree) {
@@ -127,14 +135,18 @@ bool read_ecdsa_public_key(connection_t *c) {
 		}
 	}
 
+	if (get_config_string(lookup_config(config_tree, "SptpsKeyType"), &p)) {
+		if (strcasecmp(p, "ecdsa") == 0) {
+			keytype = SPTPS_KEY_ECDSA;
+			conf_pubkey = "ECDSAPublicKey";
+			conf_pubkey_file = "ECDSAPublicKeyFile";
+		}
+		free(p);
+	}
+
 	/* First, check for simple Ed25519PublicKey or ECDSAPublicKey statement */
 
-	if(get_config_string(lookup_config(c->config_tree, "Ed25519PublicKey"), &p)) {
-		c->ecdsa = ecdsa_set_base64_public_key(p);
-		free(p);
-		return c->ecdsa;
-	}
-	if(get_config_string(lookup_config(c->config_tree, "ECDSAPublicKey"), &p)) {
+	if(get_config_string(lookup_config(c->config_tree, conf_pubkey), &p)) {
 		c->ecdsa = ecdsa_set_base64_public_key(p);
 		free(p);
 		return c->ecdsa;
@@ -142,12 +154,8 @@ bool read_ecdsa_public_key(connection_t *c) {
 
 	/* Else, check for Ed25519PublicKeyFile or ECDSAPublicKeyFile statement and read it */
 
-	if(!get_config_string(lookup_config(c->config_tree, "Ed25519PublicKeyFile"), &fname)) {
-		if(get_config_string(lookup_config(c->config_tree, "ECDSAPublicKeyFile"), &fname)) {
-			keytype = SPTPS_KEY_ECDSA;
-		} else {
-			xasprintf(&fname, "%s" SLASH "hosts" SLASH "%s", confbase, c->name);
-		}
+	if(!get_config_string(lookup_config(c->config_tree, conf_pubkey_file), &fname)) {
+		xasprintf(&fname, "%s" SLASH "hosts" SLASH "%s", confbase, c->name);
 	}
 
 	fp = fopen(fname, "r");
@@ -162,7 +170,7 @@ bool read_ecdsa_public_key(connection_t *c) {
 	c->ecdsa = ecdsa_read_pem_public_key(keytype, fp);
 
 	if(!c->ecdsa && errno != ENOENT) {
-		logger(DEBUG_ALWAYS, LOG_ERR, "Parsing ECDSA public key file `%s' failed.", fname);
+		logger(DEBUG_ALWAYS, LOG_ERR, "Parsing SPTPS public key file `%s' failed.", fname);
 	}
 
 	fclose(fp);
@@ -211,22 +219,31 @@ bool read_rsa_public_key(connection_t *c) {
 static bool read_ecdsa_private_key(void) {
 	FILE *fp;
 	char *fname;
+	char *str;
+	char *conf_privkey_file = "Ed25519PrivateKeyFile";
+	char *privkey_file = "ed25519_key.priv";
+	int keytype = SPTPS_KEY_ED25519;
 
-	/* Check for PrivateKeyFile statement and read it */
+	if (get_config_string(lookup_config(config_tree, "SptpsKeyType"), &str)) {
+		if (strcasecmp(str, "ecdsa") == 0) {
+			keytype = SPTPS_KEY_ECDSA;
+			conf_privkey_file = "ECDSAPrivateKeyFile";
+			privkey_file = "ecdsa_key.priv";
+		}
+		free(str);
+	}
 
-	if(!get_config_string(lookup_config(config_tree, "ECDSAPrivateKeyFile"), &fname)) {
-		xasprintf(&fname, "%s" SLASH "ecdsa_key.priv", confbase);
+	if(!get_config_string(lookup_config(config_tree, conf_privkey_file), &fname)) {
+		xasprintf(&fname, "%s" SLASH "%s", confbase, privkey_file);
 	}
 
 	fp = fopen(fname, "r");
 
 	if(!fp) {
-		logger(DEBUG_ALWAYS, LOG_ERR, "Error reading ECDSA private key file `%s': %s", fname, strerror(errno));
-
+		logger(DEBUG_ALWAYS, LOG_ERR, "Error reading SPTPS private key file `%s': %s", fname, strerror(errno));
 		if(errno == ENOENT) {
-			logger(DEBUG_ALWAYS, LOG_INFO, "Create an ECDSA keypair with `tinc -n %s generate-ecdsa-keys'.", netname ? : ".");
+			logger(DEBUG_ALWAYS, LOG_INFO, "Create an SPTPS keypair with `tinc -n %s generate-sptps-keys'.", netname ?: ".");
 		}
-
 		free(fname);
 		return false;
 	}
@@ -235,22 +252,22 @@ static bool read_ecdsa_private_key(void) {
 	struct stat s;
 
 	if(fstat(fileno(fp), &s)) {
-		logger(DEBUG_ALWAYS, LOG_ERR, "Could not stat ECDSA private key file `%s': %s'", fname, strerror(errno));
+		logger(DEBUG_ALWAYS, LOG_ERR, "Could not stat SPTPS private key file `%s': %s'", fname, strerror(errno));
 		free(fname);
 		return false;
 	}
 
 	if(s.st_mode & ~0100700) {
-		logger(DEBUG_ALWAYS, LOG_WARNING, "Warning: insecure file permissions for ECDSA private key file `%s'!", fname);
+		logger(DEBUG_ALWAYS, LOG_WARNING, "Warning: insecure file permissions for SPTPS private key file `%s'!", fname);
 	}
 
 #endif
 
-	myself->connection->ecdsa = ecdsa_read_pem_private_key(SPTPS_KEY_ECDSA, fp);
+	myself->connection->ecdsa = ecdsa_read_pem_private_key(keytype, fp);
 	fclose(fp);
 
 	if(!myself->connection->ecdsa) {
-		logger(DEBUG_ALWAYS, LOG_ERR, "Reading ECDSA private key file `%s' failed", fname);
+		logger(DEBUG_ALWAYS, LOG_ERR, "Reading SPTPS private key file `%s' failed: %s", fname, strerror(errno));
 	}
 
 	free(fname);
@@ -260,22 +277,33 @@ static bool read_ecdsa_private_key(void) {
 static bool read_invitation_key(void) {
 	FILE *fp;
 	char fname[PATH_MAX];
+	char *str;
+	char *privkey_file = "ed25519_key.priv";
 
 	if(invitation_key) {
 		ecdsa_free(invitation_key);
 		invitation_key = NULL;
+		invitation_keytype = SPTPS_KEY_ED25519;
 	}
 
-	snprintf(fname, sizeof(fname), "%s" SLASH "invitations" SLASH "ecdsa_key.priv", confbase);
+	if (get_config_string(lookup_config(config_tree, "SptpsKeyType"), &str)) {
+		if (strcasecmp(str, "ecdsa") == 0) {
+			privkey_file = "ecdsa_key.priv";
+			invitation_keytype = SPTPS_KEY_ECDSA;
+		}
+		free(str);
+	}
+
+	snprintf(fname, sizeof(fname), "%s" SLASH "invitations" SLASH "%s", confbase, privkey_file);
 
 	fp = fopen(fname, "r");
 
 	if(fp) {
-		invitation_key = ecdsa_read_pem_private_key(SPTPS_KEY_ECDSA, fp);
+		invitation_key = ecdsa_read_pem_private_key(invitation_keytype, fp);
 		fclose(fp);
 
 		if(!invitation_key) {
-			logger(DEBUG_ALWAYS, LOG_ERR, "Reading ECDSA private key file `%s' failed", fname);
+			logger(DEBUG_ALWAYS, LOG_ERR, "Reading SPTPS private key file `%s' failed: %s", fname, strerror(errno));
 		}
 	}
 

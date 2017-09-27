@@ -49,6 +49,7 @@
 
 int invitation_lifetime;
 ecdsa_t *invitation_key = NULL;
+int invitation_keytype = SPTPS_KEY_ED25519;
 
 static bool send_proxyrequest(connection_t *c) {
 	switch(proxytype) {
@@ -197,7 +198,7 @@ static bool finalize_invitation(connection_t *c, const char *data, uint16_t len)
 		return false;
 	}
 
-	fprintf(f, "ECDSAPublicKey = %s\n", data);
+	fprintf(f, "%s = %s\n", invitation_keytype == SPTPS_KEY_ECDSA ? "ECDSAPublicKey" : "Ed25519PublicKey", data);
 	fclose(f);
 
 	logger(DEBUG_CONNECTIONS, LOG_INFO, "Key successfully received from %s (%s)", c->name, c->hostname);
@@ -861,12 +862,12 @@ static bool upgrade_h(connection_t *c, const char *request) {
 	c->ecdsa = ecdsa_set_base64_public_key(pubkey);
 
 	if(!c->ecdsa) {
-		logger(DEBUG_ALWAYS, LOG_INFO, "Got bad ECDSA public key from %s (%s), not upgrading.", c->name, c->hostname);
+		logger(DEBUG_ALWAYS, LOG_INFO, "Got bad SPTPS public key from %s (%s), not upgrading.", c->name, c->hostname);
 		return false;
 	}
 
-	logger(DEBUG_ALWAYS, LOG_INFO, "Got ECDSA public key from %s (%s), upgrading!", c->name, c->hostname);
-	append_config_file(c->name, "ECDSAPublicKey", pubkey);
+	logger(DEBUG_ALWAYS, LOG_INFO, "Got SPTPS public key from %s (%s), upgrading!", c->name, c->hostname);
+	append_config_file(c->name, ecdsa_keytype(c->ecdsa) == SPTPS_KEY_ECDSA ? "ECDSAPublicKey" : "Ed25519PublicKey", pubkey);
 	c->allow_request = TERMREQ;
 
 	if(c->outgoing) {

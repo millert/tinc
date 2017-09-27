@@ -273,7 +273,12 @@ int fsck(const char *argv0) {
 #endif
 
 	ecdsa_t *ecdsa_priv = NULL;
-	snprintf(fname, sizeof(fname), "%s/ecdsa_key.priv", confbase);
+	char *keystr = "ed25519";
+	int keytype = get_key_type();
+
+	if (keytype == SPTPS_KEY_ECDSA)
+		keystr = "ecdsa";
+	snprintf(fname, sizeof(fname), "%s/%s_key.priv", confbase, keystr);
 
 	if(stat(fname, &st)) {
 		if(errno != ENOENT) {
@@ -289,14 +294,13 @@ int fsck(const char *argv0) {
 			fprintf(stderr, "ERROR: could not open %s: %s\n", fname, strerror(errno));
 			return 1;
 		}
-
-		ecdsa_priv = ecdsa_read_pem_private_key(SPTPS_KEY_ECDSA, f);
+		ecdsa_priv = ecdsa_read_pem_private_key(keytype, f);
 		fclose(f);
 
 		if(!ecdsa_priv) {
 			fprintf(stderr, "ERROR: No key or unusable key found in %s.\n", fname);
-			fprintf(stderr, "You can generate a new ECDSA key with:\n\n");
-			print_tinc_cmd(argv0, "generate-ecdsa-keys");
+			fprintf(stderr, "You can generate a new SPTPS key with:\n\n");
+			print_tinc_cmd(argv0, "generate-sptps-keys");
 			return 1;
 		}
 
@@ -322,11 +326,11 @@ int fsck(const char *argv0) {
 #ifdef DISABLE_LEGACY
 
 	if(!ecdsa_priv) {
-		fprintf(stderr, "ERROR: No ECDSA private key found.\n");
+		fprintf(stderr, "ERROR: No SPTPS private key found.\n");
 #else
 
 	if(!rsa_priv && !ecdsa_priv) {
-		fprintf(stderr, "ERROR: Neither RSA or ECDSA private key found.\n");
+		fprintf(stderr, "ERROR: Neither RSA or SPTPS private key found.\n");
 #endif
 		fprintf(stderr, "You can generate new keys with:\n\n");
 		print_tinc_cmd(argv0, "generate-keys");
@@ -416,11 +420,11 @@ int fsck(const char *argv0) {
 	f = fopen(fname, "r");
 
 	if(f) {
-		ecdsa_pub = get_pubkey(f);
+		ecdsa_pub = get_pubkey(keytype, f);
 
 		if(!ecdsa_pub) {
 			rewind(f);
-			ecdsa_pub = ecdsa_read_pem_public_key(SPTPS_KEY_ECDSA, f);
+			ecdsa_pub = ecdsa_read_pem_public_key(keytype, f);
 		}
 
 		fclose(f);
@@ -428,16 +432,16 @@ int fsck(const char *argv0) {
 
 	if(ecdsa_priv) {
 		if(!ecdsa_pub) {
-			fprintf(stderr, "WARNING: No (usable) public ECDSA key found.\n");
+			fprintf(stderr, "WARNING: No (usable) public SPTPS key found.\n");
 
 			if(ask_fix()) {
 				FILE *f = fopen(fname, "a");
 
 				if(f) {
 					if(ecdsa_write_pem_public_key(ecdsa_priv, f)) {
-						fprintf(stderr, "Wrote ECDSA public key to %s.\n", fname);
+						fprintf(stderr, "Wrote SPTPS public key to %s.\n", fname);
 					} else {
-						fprintf(stderr, "ERROR: could not write ECDSA public key to %s.\n", fname);
+						fprintf(stderr, "ERROR: could not write SPTPS public key to %s.\n", fname);
 					}
 
 					fclose(f);
@@ -450,7 +454,7 @@ int fsck(const char *argv0) {
 			char *key1 = ecdsa_get_base64_public_key(ecdsa_pub);
 
 			if(!key1) {
-				fprintf(stderr, "ERROR: public ECDSA key does not work.\n");
+				fprintf(stderr, "ERROR: public SPTPS key does not work.\n");
 				return 1;
 			}
 
@@ -458,7 +462,7 @@ int fsck(const char *argv0) {
 
 			if(!key2) {
 				free(key1);
-				fprintf(stderr, "ERROR: private ECDSA key does not work.\n");
+				fprintf(stderr, "ERROR: private SPTPS key does not work.\n");
 				return 1;
 			}
 
@@ -467,13 +471,13 @@ int fsck(const char *argv0) {
 			free(key2);
 
 			if(result) {
-				fprintf(stderr, "ERROR: public and private ECDSA keys do not match.\n");
+				fprintf(stderr, "ERROR: public and private SPTPS keys do not match.\n");
 				return 1;
 			}
 		}
 	} else {
 		if(ecdsa_pub) {
-			fprintf(stderr, "WARNING: A public ECDSA key was found but no private key is known.\n");
+			fprintf(stderr, "WARNING: A public SPTPS key was found but no private key is known.\n");
 		}
 	}
 

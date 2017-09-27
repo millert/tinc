@@ -124,9 +124,9 @@ static void usage(bool status) {
 		       "  restart [tincd options]    Restart tincd.\n"
 		       "  reload                     Partially reload configuration of running tincd.\n"
 		       "  pid                        Show PID of currently running tincd.\n"
-		       "  generate-keys [bits]       Generate new RSA and ECDSA public/private keypairs.\n"
+		       "  generate-keys [bits]       Generate new RSA and SPTPS public/private keypairs.\n"
 		       "  generate-rsa-keys [bits]   Generate a new RSA public/private keypair.\n"
-		       "  generate-ecdsa-keys      Generate a new ECDSA public/private keypair.\n"
+		       "  generate-sptps-keys      Generate a new SPTPS public/private keypair.\n"
 		       "  dump                       Dump a list of one of the following things:\n"
 		       "    [reachable] nodes        - all known nodes in the VPN\n"
 		       "    edges                    - all known connections in the VPN\n"
@@ -274,20 +274,20 @@ static void disable_old_keys(const char *filename, const char *what) {
 
 	while(fgets(buf, sizeof(buf), r)) {
 		if(!block && !strncmp(buf, "-----BEGIN ", 11)) {
-			if((strstr(buf, " EC ") && strstr(what, "ECDSA")) || (strstr(buf, " RSA ") && strstr(what, "RSA"))) {
+			if(((strstr(buf, " ED25519 ") && strstr(what, "Ed25519"))) || (strstr(buf, " EC ") && strstr(what, "ECDSA")) || (strstr(buf, " RSA ") && strstr(what, "RSA"))) {
 				disabled = true;
 				block = true;
 			}
 		}
 
-		bool ecdsapubkey = !strncasecmp(buf, "ECDSAPublicKey", 14) && strchr(" \t=", buf[16]) && strstr(what, "ECDSA");
-
-		if(ecdsapubkey) {
+		bool foundkey = false;
+		if ((!strncasecmp(buf, "Ed25519PublicKey", 16) && strchr(" \t=", buf[16]) && strstr(what, "Ed25519")) || (!strncasecmp(buf, "ECDSAPublicKey", 14) && strchr(" \t=", buf[16]) && strstr(what, "ECDSA"))) {
 			disabled = true;
+			foundkey = true;
 		}
 
 		if(w) {
-			if(block || ecdsapubkey) {
+			if(block || foundkey)
 				fputc('#', w);
 			}
 
@@ -407,18 +407,23 @@ static bool ecdsa_keygen(bool ask) {
 	ecdsa_t *key;
 	FILE *f;
 	char fname[PATH_MAX];
+	char *keystr = "ed25519";
+	int keytype = get_key_type();
 
-	fprintf(stderr, "Generating ECDSA keypair:\n");
+	if (keytype == SPTPS_KEY_ECDSA)
+		keystr = "ecdsa";
 
-	if(!(key = ecdsa_generate(get_key_type()))) {
+	fprintf(stderr, "Generating SPTPS keypair:\n");
+
+	if(!(key = ecdsa_generate(keytype))) {
 		fprintf(stderr, "Error during key generation!\n");
 		return false;
 	} else {
 		fprintf(stderr, "Done.\n");
 	}
 
-	snprintf(fname, sizeof(fname), "%s" SLASH "ecdsa_key.priv", confbase);
-	f = ask_and_open(fname, "private ECDSA key", "a", ask, 0600);
+	snprintf(fname, sizeof(fname), "%s" SLASH "%s_key.priv", confbase, keystr);
+	f = ask_and_open(fname, keytype == SPTPS_KEY_ECDSA ? "private ECDSA key" : "private ED25519 key", "a", ask, 0600);
 
 	if(!f) {
 		goto error;
@@ -434,17 +439,17 @@ static bool ecdsa_keygen(bool ask) {
 	if(name) {
 		snprintf(fname, sizeof(fname), "%s" SLASH "hosts" SLASH "%s", confbase, name);
 	} else {
-		snprintf(fname, sizeof(fname), "%s" SLASH "ecdsa_key.pub", confbase);
+		snprintf(fname, sizeof(fname), "%s" SLASH "%s_key.pub", confbase, keystr);
 	}
 
-	f = ask_and_open(fname, "public ECDSA key", "a", ask, 0666);
+	f = ask_and_open(fname, keytype == SPTPS_KEY_ECDSA ? "public ECDSA key" : "public ED25519 key", "a", ask, 0666);
 
 	if(!f) {
 		return false;
 	}
 
 	char *pubkey = ecdsa_get_base64_public_key(key);
-	fprintf(f, "ECDSAPublicKey = %s\n", pubkey);
+	fprintf(f, "%s = %s\n", keytype == SPTPS_KEY_ECDSA ? "ECDSAPublicKey" : "Ed25519PublicKey", pubkey);
 	free(pubkey);
 
 	fclose(f);
@@ -1648,9 +1653,13 @@ char *get_my_name(bool verbose) {
 	return NULL;
 }
 
-ecdsa_t *get_pubkey(FILE *f) {
+ecdsa_t *get_pubkey(int keytype, FILE *f) {
+	const char *conf_pubkey = "Ed25519PublicKey";
 	char buf[4096];
 	char *value;
+
+	if (keytype == SPTPS_KEY_ECDSA)
+		conf_pubkey = "ECDSAPublicKey";
 
 	while(fgets(buf, sizeof(buf), f)) {
 		int len = strcspn(buf, "\t =");
@@ -1667,7 +1676,7 @@ ecdsa_t *get_pubkey(FILE *f) {
 		}
 
 		buf[len] = 0;
-		if(strcasecmp(buf, "ECDSAPublicKey")) {
+		if(strcasecmp(buf, conf_pubkey)) {
 			continue;
 		}
 
@@ -1734,9 +1743,8 @@ int get_key_type(void) {
 		if(strcasecmp(buf, "SptpsKeyType"))
 			continue;
 		if(*value) {
-			if (strcasecmp(value, "ECDSA") == 0) {
+			if (strcasecmp(value, "ecdsa") == 0)
 				keytype = SPTPS_KEY_ECDSA;
-			}
 			break;
 		}
 	}
@@ -2354,7 +2362,7 @@ static int cmd_generate_rsa_keys(int argc, char *argv[]) {
 	return !rsa_keygen(argc > 1 ? atoi(argv[1]) : 2048, true);
 }
 
-static int cmd_generate_ecdsa_keys(int argc, char *argv[]) {
+static int cmd_generate_sptps_keys(int argc, char *argv[]) {
 	if(argc > 1) {
 		fprintf(stderr, "Too many arguments!\n");
 		return 1;
@@ -2942,7 +2950,7 @@ static int cmd_verify(int argc, char *argv[]) {
 		return 1;
 	}
 
-	ecdsa_t *key = get_pubkey(fp);
+	ecdsa_t *key = get_pubkey(get_key_type(), fp);
 
 	if(!key) {
 		rewind(fp);
@@ -3001,7 +3009,7 @@ static const struct {
 	{"init", cmd_init},
 	{"generate-keys", cmd_generate_keys},
 	{"generate-rsa-keys", cmd_generate_rsa_keys},
-	{"generate-ecdsa-keys", cmd_generate_ecdsa_keys},
+	{"generate-sptps-keys", cmd_generate_sptps_keys},
 	{"help", cmd_help},
 	{"version", cmd_version},
 	{"info", cmd_info},

@@ -203,7 +203,7 @@ extern void try_outgoing_connections(void);
 extern void close_network_connections(void);
 extern int main_loop(void);
 extern void terminate_connection(struct connection_t *c, bool report);
-extern bool node_read_ecdsa_public_key(struct node_t *n);
+extern bool node_read_ecdsa_public_key(struct node_t *n, int keytype);
 extern bool read_ecdsa_public_key(struct connection_t *c);
 extern bool read_rsa_public_key(struct connection_t *c);
 extern void handle_device_data(void *data, int flags);
