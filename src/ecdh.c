@@ -24,7 +24,7 @@
 #include <openssl/ecdh.h>
 #include <openssl/obj_mac.h>
 
-#define __TINC_ECDH_INTERNAL__
+#define TINC_ECDH_INTERNAL
 typedef struct ecdh {
 	struct ecdh_operations *ops;
 	void *key;
