@@ -32,9 +32,9 @@ struct ecdh_operations {
 	void (*free)(void *ecdh);
 };
 
-extern ecdh_t *ecdh_alloc(int keytype) __attribute__ ((__malloc__));
+extern ecdh_t *ecdh_alloc(int keytype) __attribute__((__malloc__));
 extern bool ecdh_generate_public(ecdh_t *ecdh, void *pubkey);
-extern bool ecdh_compute_shared(ecdh_t *ecdh, const void *pubkey, void *shared) __attribute__ ((__warn_unused_result__));
+extern bool ecdh_compute_shared(ecdh_t *ecdh, const void *pubkey, void *shared) __attribute__((__warn_unused_result__));
 extern void ecdh_free(ecdh_t *ecdh);
 extern size_t ecdh_size(ecdh_t *ecdh);
 extern size_t ecdh_shared_size(ecdh_t *ecdh);

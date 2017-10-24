@@ -32,6 +32,7 @@
 static void *openssl_ecdsa_set_public_key(const char *pubkey, int len) {
 	const unsigned char *ppubkey = (const unsigned char *)pubkey;
 	EC_KEY *ecdsa = EC_KEY_new_by_curve_name(NID_secp521r1);
+
 	if(!ecdsa) {
 		logger(DEBUG_ALWAYS, LOG_DEBUG, "EC_KEY_new_by_curve_name failed: %s", ERR_error_string(ERR_get_error(), NULL));
 		return NULL;
@@ -75,8 +76,9 @@ static void *openssl_ecdsa_generate(void) {
 static void *openssl_ecdsa_read_pem_public_key(FILE *fp) {
 	EC_KEY *ecdsa = PEM_read_EC_PUBKEY(fp, NULL, NULL, NULL);
 
-	if(!ecdsa)
+	if(!ecdsa) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "Unable to read ECDSA public key: %s", ERR_error_string(ERR_get_error(), NULL));
+	}
 
 	return ecdsa;
 }
@@ -84,8 +86,9 @@ static void *openssl_ecdsa_read_pem_public_key(FILE *fp) {
 static void *openssl_ecdsa_read_pem_private_key(FILE *fp) {
 	EC_KEY *ecdsa = PEM_read_ECPrivateKey(fp, NULL, NULL, NULL);
 
-	if(!ecdsa)
+	if(!ecdsa) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "Unable to read ECDSA private key: %s", ERR_error_string(ERR_get_error(), NULL));
+	}
 
 	return ecdsa;
 }
@@ -95,13 +98,13 @@ static void *openssl_ecdsa_read_pem_private_key(FILE *fp) {
 static bool openssl_ecdsa_write_pem_public_key(void *v, FILE *fp) {
 	EC_KEY *ecdsa = v;
 
-        return PEM_write_EC_PUBKEY(fp, ecdsa);
+	return PEM_write_EC_PUBKEY(fp, ecdsa);
 }
 
 static bool openssl_ecdsa_write_pem_private_key(void *v, FILE *fp) {
 	EC_KEY *ecdsa = v;
 
-        return PEM_write_ECPrivateKey(fp, ecdsa, NULL, NULL, 0, NULL, NULL);
+	return PEM_write_ECPrivateKey(fp, ecdsa, NULL, NULL, 0, NULL, NULL);
 }
 
 static size_t openssl_ecdsa_size(void *v) {
@@ -120,7 +123,7 @@ static bool openssl_ecdsa_sign(void *ecdsa, const void *in, size_t len, void *si
 
 	memset(sig, 0, siglen);
 
-	if(!ECDSA_sign(0, hash, sizeof hash, sig, &siglen, ecdsa)) {
+	if(!ECDSA_sign(0, hash, sizeof(hash), sig, &siglen, ecdsa)) {
 		logger(DEBUG_ALWAYS, LOG_DEBUG, "ECDSA_sign() failed: %s", ERR_error_string(ERR_get_error(), NULL));
 		return false;
 	}
@@ -134,7 +137,7 @@ static bool openssl_ecdsa_verify(void *ecdsa, const void *in, size_t len, const 
 	unsigned char hash[SHA512_DIGEST_LENGTH];
 	SHA512(in, len, hash);
 
-	if(!ECDSA_verify(0, hash, sizeof hash, sig, siglen, ecdsa)) {
+	if(!ECDSA_verify(0, hash, sizeof(hash), sig, siglen, ecdsa)) {
 		logger(DEBUG_ALWAYS, LOG_DEBUG, "ECDSA_verify() failed: %s", ERR_error_string(ERR_get_error(), NULL));
 		return false;
 	}

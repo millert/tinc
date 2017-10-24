@@ -39,20 +39,20 @@ struct ecdsa_operations {
 };
 
 // Key types
-#define SPTPS_KEY_NONE		0
-#define SPTPS_KEY_ED25519	1
-#define SPTPS_KEY_ECDSA		2
+#define SPTPS_KEY_NONE          0
+#define SPTPS_KEY_ED25519       1
+#define SPTPS_KEY_ECDSA         2
 
-extern ecdsa_t *ecdsa_set_base64_public_key(const char *p) __attribute__ ((__malloc__));
+extern ecdsa_t *ecdsa_set_base64_public_key(const char *p) __attribute__((__malloc__));
 extern char *ecdsa_get_base64_public_key(ecdsa_t *ecdsa);
 extern ecdsa_t *ecdsa_generate(int keytype);
-extern ecdsa_t *ecdsa_read_pem_public_key(int keytype, FILE *fp) __attribute__ ((__malloc__));
-extern ecdsa_t *ecdsa_read_pem_private_key(int keytype, FILE *fp) __attribute__ ((__malloc__));
-extern bool ecdsa_write_pem_public_key(ecdsa_t *ecdsa, FILE *fp) __attribute__ ((__warn_unused_result__));
-extern bool ecdsa_write_pem_private_key(ecdsa_t *ecdsa, FILE *fp) __attribute__ ((__warn_unused_result__));
+extern ecdsa_t *ecdsa_read_pem_public_key(int keytype, FILE *fp) __attribute__((__malloc__));
+extern ecdsa_t *ecdsa_read_pem_private_key(int keytype, FILE *fp) __attribute__((__malloc__));
+extern bool ecdsa_write_pem_public_key(ecdsa_t *ecdsa, FILE *fp) __attribute__((__warn_unused_result__));
+extern bool ecdsa_write_pem_private_key(ecdsa_t *ecdsa, FILE *fp) __attribute__((__warn_unused_result__));
 extern size_t ecdsa_size(ecdsa_t *ecdsa);
-extern bool ecdsa_sign(ecdsa_t *ecdsa, const void *in, size_t inlen, void *out) __attribute__ ((__warn_unused_result__));
-extern bool ecdsa_verify(ecdsa_t *ecdsa, const void *in, size_t inlen, const void *out) __attribute__ ((__warn_unused_result__));
+extern bool ecdsa_sign(ecdsa_t *ecdsa, const void *in, size_t inlen, void *out) __attribute__((__warn_unused_result__));
+extern bool ecdsa_verify(ecdsa_t *ecdsa, const void *in, size_t inlen, const void *out) __attribute__((__warn_unused_result__));
 extern bool ecdsa_active(ecdsa_t *ecdsa);
 extern void ecdsa_free(ecdsa_t *ecdsa);
 extern int ecdsa_keytype(ecdsa_t *ecdsa);

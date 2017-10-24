@@ -41,10 +41,10 @@ static size_t ed25519_ecdh_shared_size(void) {
 }
 
 static void *ed25519_ecdh_generate_public(void *pubkey) {
-	ecdh_impl_t *ecdh = xzalloc(sizeof *ecdh);
+	ecdh_impl_t *ecdh = xzalloc(sizeof(*ecdh));
 
 	uint8_t seed[32];
-	randomize(seed, sizeof seed);
+	randomize(seed, sizeof(seed));
 	ed25519_create_keypair(pubkey, ecdh->private, seed);
 
 	return ecdh;

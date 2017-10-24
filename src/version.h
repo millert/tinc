@@ -20,8 +20,8 @@
 #ifndef __TINC_VERSION_H__
 #define __TINC_VERSION_H__
 
-extern const char* const BUILD_DATE;
-extern const char* const BUILD_TIME;
-extern const char* const BUILD_VERSION;
+extern const char *const BUILD_DATE;
+extern const char *const BUILD_TIME;
+extern const char *const BUILD_VERSION;
 
 #endif /* __TINC_VERSION_H__ */

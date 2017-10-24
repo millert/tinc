@@ -39,7 +39,8 @@ static void *ed25519_ecdsa_set_public_key(const char *pubkey, int len) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "Invalid format of public key! len = %d", len);
 		return 0;
 	}
-	ecdsa_impl_t *ecdsa = xzalloc(sizeof *ecdsa);
+
+	ecdsa_impl_t *ecdsa = xzalloc(sizeof(*ecdsa));
 	memcpy(ecdsa->public, pubkey, len);
 
 	return ecdsa;
@@ -57,10 +58,10 @@ static char *ed25519_ecdsa_get_public_key(void *v, int *len) {
 // Generate ECDSA key
 
 static void *ed25519_ecdsa_generate(void) {
-	ecdsa_impl_t *ecdsa = xzalloc(sizeof *ecdsa);
+	ecdsa_impl_t *ecdsa = xzalloc(sizeof(*ecdsa));
 
 	uint8_t seed[32];
-	randomize(seed, sizeof seed);
+	randomize(seed, sizeof(seed));
 	ed25519_create_keypair(ecdsa->public, ecdsa->private, seed);
 
 	return ecdsa;
@@ -73,21 +74,27 @@ static bool read_pem(FILE *fp, const char *type, void *buf, size_t size) {
 	bool data = false;
 	size_t typelen = strlen(type);
 
-	while(fgets(line, sizeof line, fp)) {
+	while(fgets(line, sizeof(line), fp)) {
 		if(!data) {
-			if(strncmp(line, "-----BEGIN ", 11))
+			if(strncmp(line, "-----BEGIN ", 11)) {
 				continue;
-			if(strncmp(line + 11, type, typelen))
+			}
+
+			if(strncmp(line + 11, type, typelen)) {
 				continue;
+			}
+
 			data = true;
 			continue;
 		}
 
-		if(!strncmp(line, "-----END ", 9))
+		if(!strncmp(line, "-----END ", 9)) {
 			break;
+		}
 
 		size_t linelen = strcspn(line, "\r\n");
 		size_t len = b64decode(line, line, linelen);
+
 		if(!len) {
 			logger(DEBUG_ALWAYS, LOG_ERR, "Invalid base64 data in PEM file\n");
 			errno = EINVAL;
@@ -112,6 +119,7 @@ static bool read_pem(FILE *fp, const char *type, void *buf, size_t size) {
 		} else {
 			errno = ENOENT;
 		}
+
 		return false;
 	}
 
@@ -119,17 +127,23 @@ static bool read_pem(FILE *fp, const char *type, void *buf, size_t size) {
 }
 
 static void *ed25519_ecdsa_read_pem_public_key(FILE *fp) {
-	ecdsa_impl_t *ecdsa = xzalloc(sizeof *ecdsa);
-	if(read_pem(fp, "ED25519 PUBLIC KEY", ecdsa->public, sizeof ecdsa->public))
+	ecdsa_impl_t *ecdsa = xzalloc(sizeof(*ecdsa));
+
+	if(read_pem(fp, "ED25519 PUBLIC KEY", ecdsa->public, sizeof(ecdsa->public))) {
 		return ecdsa;
+	}
+
 	free(ecdsa);
 	return 0;
 }
 
 static void *ed25519_ecdsa_read_pem_private_key(FILE *fp) {
-	ecdsa_impl_t *ecdsa = xmalloc(sizeof *ecdsa);
-	if(read_pem(fp, "ED25519 PRIVATE KEY", ecdsa->private, sizeof *ecdsa))
+	ecdsa_impl_t *ecdsa = xmalloc(sizeof(*ecdsa));
+
+	if(read_pem(fp, "ED25519 PRIVATE KEY", ecdsa->private, sizeof(*ecdsa))) {
 		return ecdsa;
+	}
+
 	free(ecdsa);
 	return 0;
 }
@@ -140,6 +154,7 @@ static bool write_pem(FILE *fp, const char *type, void *buf, size_t size) {
 	fprintf(fp, "-----BEGIN %s-----\n", type);
 
 	char base64[65];
+
 	while(size) {
 		size_t todo = size > 48 ? 48 : size;
 		b64encode(buf, base64, todo);
@@ -154,12 +169,12 @@ static bool write_pem(FILE *fp, const char *type, void *buf, size_t size) {
 
 static bool ed25519_ecdsa_write_pem_public_key(void *v, FILE *fp) {
 	ecdsa_impl_t *ecdsa = v;
-	return write_pem(fp, "ED25519 PUBLIC KEY", ecdsa->public, sizeof ecdsa->public);
+	return write_pem(fp, "ED25519 PUBLIC KEY", ecdsa->public, sizeof(ecdsa->public));
 }
 
 static bool ed25519_ecdsa_write_pem_private_key(void *v, FILE *fp) {
 	ecdsa_impl_t *ecdsa = v;
-	return write_pem(fp, "ED25519 PRIVATE KEY", ecdsa->private, sizeof *ecdsa);
+	return write_pem(fp, "ED25519 PRIVATE KEY", ecdsa->private, sizeof(*ecdsa));
 }
 
 static size_t ed25519_ecdsa_size(void *v) {
