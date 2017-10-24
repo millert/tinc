@@ -77,7 +77,7 @@ The RSA keys are used for backwards compatibility with tinc version 1.0.
 If you are upgrading from version 1.0 to 1.1, you can keep the old configuration files,
 but you will need to create ECDSA keys using the following command:
 .Bd -literal -offset indent
-.Nm tinc Fl n Ar NETNAME Li generate-ecdsa-keys
+.Nm tinc Fl n Ar NETNAME Li generate-sptps-keys
 .Ed
 .Sh SERVER CONFIGURATION
 The server configuration of the daemon is done in the file
@@ -294,7 +294,7 @@ When this option is enabled, the SPTPS protocol will be used when connecting to 
 Ephemeral ECDH will be used for key exchanges,
 and ECDSA will be used instead of RSA for authentication.
 When enabled, an ECDSA key must have been generated before with
-.Nm tinc generate-ecdsa-keys .
+.Nm tinc generate-sptps-keys .
 .It Va Forwarding Li = off | internal | kernel Po internal Pc Bq experimental
 This option selects the way indirect packets are forwarded.
 .Bl -tag -width indent
