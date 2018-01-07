@@ -42,6 +42,7 @@
 #include "subnet.h"
 #include "utils.h"
 #include "xalloc.h"
+#include "async_device.h"
 #include "async_send.h"
 
 #ifdef HAVE_MINIUPNPC
@@ -1203,6 +1204,7 @@ static bool setup_myself(void) {
   initialize network
 */
 bool setup_network(void) {
+	async_device_init();
 	async_send_init();
 	init_connections();
 	init_subnets();
@@ -1288,6 +1290,7 @@ void close_network_connections(void) {
 	exit_nodes();
 	exit_connections();
 	async_send_exit();
+	async_device_exit();
 
 	if(!device_standby) {
 		device_disable();

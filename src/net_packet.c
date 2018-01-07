@@ -49,6 +49,7 @@
 #include "route.h"
 #include "utils.h"
 #include "xalloc.h"
+#include "async_device.h"
 #include "async_send.h"
 
 #ifndef MAX
@@ -1413,7 +1414,7 @@ void send_packet(node_t *n, vpn_packet_t *packet) {
 
 		n->out_packets++;
 		n->out_bytes += packet->len;
-		devops.write(packet);
+		async_device_write(packet);
 		return;
 	}
 
