@@ -22,6 +22,8 @@
 
 #include "system.h"
 
+#include <assert.h>
+
 #ifdef HAVE_ZLIB
 #define ZLIB_CONST
 #include <zlib.h>
@@ -1758,7 +1760,17 @@ void handle_device_data(void *data, int flags) {
 	packet.priority = 0;
 	static int errors = 0;
 
-	if(devops.read(&packet)) {
+	if(!devops.read) {
+		uint64_t count;
+		assert(read(device_fd, &count, sizeof(count)) == sizeof(count));
+		logger(DEBUG_ALWAYS, LOG_DEBUG, "Got %lu packets", (unsigned long)count);
+		while (count--) {
+			vpn_packet_t *packet = async_pool_ctail(device_read_pool);
+			assert(packet);
+			route(myself, packet);
+			async_pool_consume(device_read_pool, packet);
+		}
+	} else if(devops.read(&packet)) {
 		errors = 0;
 		myself->in_packets++;
 		myself->in_bytes += packet.len;
