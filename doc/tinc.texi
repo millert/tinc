@@ -1031,7 +1031,7 @@ When this option is enabled, the SPTPS protocol will be used when connecting to 
 Ephemeral ECDH will be used for key exchanges,
 and ECDSA will be used instead of RSA for authentication.
 When enabled, an ECDSA key must have been generated before with
-@samp{tinc generate-ecdsa-keys}.
+@samp{tinc generate-sptps-keys}.
 
 @cindex Forwarding
 @item Forwarding = <off|internal|kernel> (internal) [experimental]
@@ -2436,8 +2436,8 @@ Generate both RSA and ECDSA keypairs (see below) and exit.
 tinc will ask where you want to store the files, but will default to the
 configuration directory (you can use the -c or -n option).
 
-@cindex generate-ecdsa-keys
-@item generate-ecdsa-keys
+@cindex generate-sptps-keys
+@item generate-sptps-keys
 Generate public/private ECDSA keypair and exit.
 
 @cindex generate-rsa-keys

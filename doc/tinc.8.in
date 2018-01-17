@@ -150,7 +150,7 @@ Shows the PID of the currently running
 .Xr tincd 8 .
 .It generate-keys Op bits
 Generate both RSA and ECDSA keypairs (see below) and exit.
-.It generate-ecdsa-keys
+.It generate-sptps-keys
 Generate public/private ECDSA keypair and exit.
 .It generate-rsa-keys Op bits
 Generate public/private RSA keypair and exit.
