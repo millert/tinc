@@ -128,7 +128,7 @@ void free_node(node_t *n) {
 void node_add(node_t *n) {
 	unsigned char buf[64];
 	sha512(n->name, strlen(n->name), buf);
-	memcpy(&n->id, buf, sizeof n->id);
+	memcpy(&n->id, buf, sizeof(n->id));
 
 	splay_insert(node_tree, n);
 	splay_insert(node_id_tree, n);

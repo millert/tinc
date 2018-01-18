@@ -123,7 +123,7 @@ static bool openssl_ecdsa_sign(void *ecdsa, const void *in, size_t len, void *si
 
 	memset(sig, 0, siglen);
 
-	if(!ECDSA_sign(0, hash, sizeof hash, sig, &siglen, ecdsa)) {
+	if(!ECDSA_sign(0, hash, sizeof(hash), sig, &siglen, ecdsa)) {
 		logger(DEBUG_ALWAYS, LOG_DEBUG, "ECDSA_sign() failed: %s", ERR_error_string(ERR_get_error(), NULL));
 		return false;
 	}
@@ -137,7 +137,7 @@ static bool openssl_ecdsa_verify(void *ecdsa, const void *in, size_t len, const 
 	unsigned char hash[SHA512_DIGEST_LENGTH];
 	SHA512(in, len, hash);
 
-	if(!ECDSA_verify(0, hash, sizeof hash, sig, siglen, ecdsa)) {
+	if(!ECDSA_verify(0, hash, sizeof(hash), sig, siglen, ecdsa)) {
 		logger(DEBUG_ALWAYS, LOG_DEBUG, "ECDSA_verify() failed: %s", ERR_error_string(ERR_get_error(), NULL));
 		return false;
 	}

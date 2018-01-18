@@ -97,7 +97,7 @@ static bool sptps_encrypt(sptps_t *s, uint32_t seqno, uint8_t type, bool store_l
 	if(s->ciphertype == SPTPS_CIPHER_AES_256_GCM) {
 		seqno = htonl(seqno);
 
-		if(!cipher_set_counter(s->outcipher, &seqno, sizeof seqno)) {
+		if(!cipher_set_counter(s->outcipher, &seqno, sizeof(seqno))) {
 			return false;
 		}
 
@@ -132,7 +132,7 @@ static bool sptps_decrypt(sptps_t *s, uint32_t seqno, const void *indata, size_t
 		} else {
 			seqno = htonl(seqno);
 
-			if(!cipher_set_counter(s->incipher, &seqno, sizeof seqno)) {
+			if(!cipher_set_counter(s->incipher, &seqno, sizeof(seqno))) {
 				return false;
 			}
 

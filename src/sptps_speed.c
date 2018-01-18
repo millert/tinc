@@ -217,15 +217,15 @@ static int connect_sockets_tcp(int *fd, struct sockaddr_in *sin) {
 	unset_nonblock(fd[0]);
 
 	int option = 1;
-#if defined(IPPROTO_TCP) && defined(TCP_NODELAY)
-	setsockopt(fd[0], IPPROTO_TCP, TCP_NODELAY, (void *)&option, sizeof option);
-	setsockopt(fd[1], IPPROTO_TCP, TCP_NODELAY, (void *)&option, sizeof option);
+#if defined(TCP_NODELAY)
+	setsockopt(fd[0], IPPROTO_TCP, TCP_NODELAY, (void *)&option, sizeof(option));
+	setsockopt(fd[1], IPPROTO_TCP, TCP_NODELAY, (void *)&option, sizeof(option));
 #endif
 
-#if defined(IPPROTO_IP) && defined(IP_TOS) && defined(IPTOS_LOWDELAY)
+#if defined(IP_TOS) && defined(IPTOS_LOWDELAY)
 	option = IPTOS_LOWDELAY;
-	setsockopt(fd[0], IPPROTO_IP, IP_TOS, (void *)&option, sizeof option);
-	setsockopt(fd[1], IPPROTO_IP, IP_TOS, (void *)&option, sizeof option);
+	setsockopt(fd[0], IPPROTO_IP, IP_TOS, (void *)&option, sizeof(option));
+	setsockopt(fd[1], IPPROTO_IP, IP_TOS, (void *)&option, sizeof(option));
 #endif
 
 	return 0;
