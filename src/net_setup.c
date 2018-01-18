@@ -75,7 +75,7 @@ bool node_read_ecdsa_public_key(node_t *n, int keytype) {
 	char *conf_pubkey = "Ed25519PublicKey";
 	char *conf_pubkey_file = "Ed25519PublicKeyFile";
 
-	if (keytype == SPTPS_KEY_ECDSA) {
+	if(keytype == SPTPS_KEY_ECDSA) {
 		conf_pubkey = "ECDSAPublicKey";
 		conf_pubkey_file = "ECDSAPublicKeyFile";
 	}
@@ -135,12 +135,13 @@ bool read_ecdsa_public_key(connection_t *c) {
 		}
 	}
 
-	if (get_config_string(lookup_config(config_tree, "SptpsKeyType"), &p)) {
-		if (strcasecmp(p, "ecdsa") == 0) {
+	if(get_config_string(lookup_config(config_tree, "SptpsKeyType"), &p)) {
+		if(strcasecmp(p, "ecdsa") == 0) {
 			keytype = SPTPS_KEY_ECDSA;
 			conf_pubkey = "ECDSAPublicKey";
 			conf_pubkey_file = "ECDSAPublicKeyFile";
 		}
+
 		free(p);
 	}
 
@@ -162,7 +163,7 @@ bool read_ecdsa_public_key(connection_t *c) {
 
 	if(!fp) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "Error reading SPTPS public key file `%s': %s",
-			   fname, strerror(errno));
+		       fname, strerror(errno));
 		free(fname);
 		return false;
 	}
@@ -224,12 +225,13 @@ static bool read_ecdsa_private_key(void) {
 	char *privkey_file = "ed25519_key.priv";
 	int keytype = SPTPS_KEY_ED25519;
 
-	if (get_config_string(lookup_config(config_tree, "SptpsKeyType"), &str)) {
-		if (strcasecmp(str, "ecdsa") == 0) {
+	if(get_config_string(lookup_config(config_tree, "SptpsKeyType"), &str)) {
+		if(strcasecmp(str, "ecdsa") == 0) {
 			keytype = SPTPS_KEY_ECDSA;
 			conf_privkey_file = "ECDSAPrivateKeyFile";
 			privkey_file = "ecdsa_key.priv";
 		}
+
 		free(str);
 	}
 
@@ -241,9 +243,11 @@ static bool read_ecdsa_private_key(void) {
 
 	if(!fp) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "Error reading SPTPS private key file `%s': %s", fname, strerror(errno));
+
 		if(errno == ENOENT) {
-			logger(DEBUG_ALWAYS, LOG_INFO, "Create an SPTPS keypair with `tinc -n %s generate-sptps-keys'.", netname ?: ".");
+			logger(DEBUG_ALWAYS, LOG_INFO, "Create an SPTPS keypair with `tinc -n %s generate-sptps-keys'.", netname ? : ".");
 		}
+
 		free(fname);
 		return false;
 	}
@@ -286,11 +290,12 @@ static bool read_invitation_key(void) {
 		invitation_keytype = SPTPS_KEY_ED25519;
 	}
 
-	if (get_config_string(lookup_config(config_tree, "SptpsKeyType"), &str)) {
-		if (strcasecmp(str, "ecdsa") == 0) {
+	if(get_config_string(lookup_config(config_tree, "SptpsKeyType"), &str)) {
+		if(strcasecmp(str, "ecdsa") == 0) {
 			privkey_file = "ecdsa_key.priv";
 			invitation_keytype = SPTPS_KEY_ECDSA;
 		}
+
 		free(str);
 	}
 

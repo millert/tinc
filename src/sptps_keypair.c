@@ -38,9 +38,9 @@ void logger(int level, int priority, const char *format, ...) {
 static void usage() {
 	fprintf(stderr, "Usage: %s [options] private_key_file public_key_file\n\n", program_name);
 	fprintf(stderr, "Valid options are:\n"
-		"  --help      Display this help and exit.\n"
-		"  --key-type  Key type, either ecdsa or ed25519.\n"
-		"\n");
+	        "  --help      Display this help and exit.\n"
+	        "  --key-type  Key type, either ecdsa or ed25519.\n"
+	        "\n");
 	fprintf(stderr, "Report bugs to tinc@tinc-vpn.org.\n");
 }
 
@@ -70,15 +70,16 @@ int main(int argc, char *argv[]) {
 			return 0;
 
 		case 2: /* key type */
-			if (strcasecmp(optarg, "ecdsa") == 0) {
+			if(strcasecmp(optarg, "ecdsa") == 0) {
 				keytype = SPTPS_KEY_ECDSA;
-			} else if (strcasecmp(optarg, "ed25519") == 0) {
+			} else if(strcasecmp(optarg, "ed25519") == 0) {
 				keytype = SPTPS_KEY_ED25519;
 			} else {
 				fprintf(stderr, "unsupported key type %s.\n", optarg);
 				usage();
 				return 1;
 			}
+
 			break;
 
 		default:

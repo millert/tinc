@@ -166,15 +166,17 @@ bool cipher_set_counter(cipher_t *cipher, const void *counter, size_t len) {
 
 bool cipher_set_counter_key(cipher_t *cipher, void *key) {
 	int result = EVP_EncryptInit_ex(cipher->ctx, cipher->cipher, NULL, (unsigned char *)key, NULL);
+
 	if(!result) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "Error while setting key: %s", ERR_error_string(ERR_get_error(), NULL));
 		return false;
 	}
 
-	if(!cipher->counter)
-		cipher->counter = xzalloc(sizeof *cipher->counter);
-	else
+	if(!cipher->counter) {
+		cipher->counter = xzalloc(sizeof(*cipher->counter));
+	} else {
 		cipher->counter->n = 0;
+	}
 
 	memcpy(cipher->counter->counter, (unsigned char *)key + EVP_CIPHER_key_length(cipher->cipher), EVP_CIPHER_iv_length(cipher->cipher));
 
@@ -183,48 +185,64 @@ bool cipher_set_counter_key(cipher_t *cipher, void *key) {
 
 bool cipher_gcm_encrypt_start(cipher_t *cipher, const void *indata, size_t inlen, void *outdata, size_t *outlen) {
 	int len = 0;
+
 	if(!EVP_EncryptInit_ex(cipher->ctx, NULL, NULL, NULL, cipher->counter->counter)
-			|| (inlen && !EVP_EncryptUpdate(cipher->ctx, (unsigned char *)outdata, &len, (unsigned char *)indata, inlen))) {
+	                || (inlen && !EVP_EncryptUpdate(cipher->ctx, (unsigned char *)outdata, &len, (unsigned char *)indata, inlen))) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "Error while encrypting: %s", ERR_error_string(ERR_get_error(), NULL));
 		return false;
 	}
-	if(outlen)
+
+	if(outlen) {
 		*outlen = len;
+	}
+
 	return true;
 }
 
 bool cipher_gcm_encrypt_finish(cipher_t *cipher, const void *indata, size_t inlen, void *outdata, size_t *outlen) {
 	int len = 0, pad = 0;
+
 	if((inlen && !EVP_EncryptUpdate(cipher->ctx, (unsigned char *)outdata, &len, (unsigned char *)indata, inlen))
-			|| !EVP_EncryptFinal(cipher->ctx, (unsigned char *)outdata + len, &pad)) {
+	                || !EVP_EncryptFinal(cipher->ctx, (unsigned char *)outdata + len, &pad)) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "Error while encrypting: %s", ERR_error_string(ERR_get_error(), NULL));
 		return false;
 	}
+
 	EVP_CIPHER_CTX_ctrl(cipher->ctx, EVP_CTRL_GCM_GET_TAG, 16, (unsigned char *)outdata + len + pad);
-	if(outlen)
+
+	if(outlen) {
 		*outlen = len + pad + 16;
+	}
+
 	return true;
 }
 
 bool cipher_gcm_encrypt(cipher_t *cipher, const void *indata, size_t inlen, void *outdata, size_t *outlen) {
 	int len = 0, pad = 0;
+
 	if(!EVP_EncryptInit_ex(cipher->ctx, NULL, NULL, NULL, cipher->counter->counter) ||
-			!EVP_EncryptUpdate(cipher->ctx, (unsigned char *)outdata, &len, (unsigned char *)indata, inlen) ||
-			!EVP_EncryptFinal(cipher->ctx, (unsigned char *)outdata + len, &pad)) {
+	                !EVP_EncryptUpdate(cipher->ctx, (unsigned char *)outdata, &len, (unsigned char *)indata, inlen) ||
+	                !EVP_EncryptFinal(cipher->ctx, (unsigned char *)outdata + len, &pad)) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "Error while encrypting: %s", ERR_error_string(ERR_get_error(), NULL));
 		return false;
 	}
+
 	EVP_CIPHER_CTX_ctrl(cipher->ctx, EVP_CTRL_GCM_GET_TAG, 16, (unsigned char *)outdata + len + pad);
-	if(outlen)
+
+	if(outlen) {
 		*outlen = len + pad + 16;
+	}
+
 	return true;
 }
 
 bool cipher_gcm_decrypt(cipher_t *cipher, const void *indata, size_t inlen, void *outdata, size_t *outlen) {
-	if(inlen < 16)
+	if(inlen < 16) {
 		return false;
+	}
 
 	int len = 0, pad = 0;
+
 	if(!EVP_DecryptInit_ex(cipher->ctx, NULL, NULL, NULL, cipher->counter->counter)) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "Error while decrypting: %s", ERR_error_string(ERR_get_error(), NULL));
 		return false;
@@ -233,39 +251,49 @@ bool cipher_gcm_decrypt(cipher_t *cipher, const void *indata, size_t inlen, void
 	EVP_CIPHER_CTX_ctrl(cipher->ctx, EVP_CTRL_GCM_SET_TAG, 16, (unsigned char *)indata + inlen - 16);
 
 	if(!EVP_DecryptUpdate(cipher->ctx, (unsigned char *)outdata, &len, (unsigned char *)indata, inlen - 16) ||
-			!EVP_DecryptFinal(cipher->ctx, (unsigned char *)outdata + len, &pad)) {
+	                !EVP_DecryptFinal(cipher->ctx, (unsigned char *)outdata + len, &pad)) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "Error while decrypting: %s", ERR_error_string(ERR_get_error(), NULL));
 		return false;
 	}
-	if(outlen)
+
+	if(outlen) {
 		*outlen = len;
+	}
+
 	return true;
 }
 
 bool cipher_gcm_decrypt_start(cipher_t *cipher, const void *indata, size_t inlen, void *outdata, size_t *outlen) {
 	int len = 0;
+
 	if(!EVP_DecryptInit_ex(cipher->ctx, NULL, NULL, NULL, cipher->counter->counter)
-			|| (inlen && !EVP_DecryptUpdate(cipher->ctx, (unsigned char *)outdata, &len, (unsigned char *)indata, inlen))) {
+	                || (inlen && !EVP_DecryptUpdate(cipher->ctx, (unsigned char *)outdata, &len, (unsigned char *)indata, inlen))) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "Error while decrypting: %s", ERR_error_string(ERR_get_error(), NULL));
 		return false;
 	}
-	if(outlen)
+
+	if(outlen) {
 		*outlen = len;
+	}
+
 	return true;
 }
 
 bool cipher_gcm_decrypt_finish(cipher_t *cipher, const void *indata, size_t inlen, void *outdata, size_t *outlen) {
-	if(inlen < 16)
+	if(inlen < 16) {
 		return false;
+	}
 
 	EVP_CIPHER_CTX_ctrl(cipher->ctx, EVP_CTRL_GCM_SET_TAG, 16, (unsigned char *)indata + inlen - 16);
 
 	int len = 0, pad = 0;
+
 	if((inlen > 16 && !EVP_DecryptUpdate(cipher->ctx, (unsigned char *)outdata, &len, (unsigned char *)indata, inlen - 16))
-			|| !EVP_DecryptFinal(cipher->ctx, (unsigned char *)outdata + len, &pad)) {
+	                || !EVP_DecryptFinal(cipher->ctx, (unsigned char *)outdata + len, &pad)) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "Error while decrypting: %s", ERR_error_string(ERR_get_error(), NULL));
 		return false;
 	}
+
 	return true;
 }
 

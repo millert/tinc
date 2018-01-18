@@ -868,12 +868,16 @@ static bool upgrade_h(connection_t *c, const char *request) {
 
 	int keytype = SPTPS_KEY_ED25519;
 	char *str;
-	if (get_config_string(lookup_config(config_tree, "SptpsKeyType"), &str)) {
-		if (strcasecmp(str, "ecdsa") == 0)
+
+	if(get_config_string(lookup_config(config_tree, "SptpsKeyType"), &str)) {
+		if(strcasecmp(str, "ecdsa") == 0) {
 			keytype = SPTPS_KEY_ECDSA;
+		}
+
 		free(str);
 	}
-	if (keytype != ecdsa_keytype(c->ecdsa)) {
+
+	if(keytype != ecdsa_keytype(c->ecdsa)) {
 		logger(DEBUG_ALWAYS, LOG_INFO, "Got wrong SPTPS public key type from %s (%s), not upgrading.", c->name, c->hostname);
 		return false;
 	}

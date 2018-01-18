@@ -99,11 +99,11 @@ const char *program_name;
 static void usage() {
 	fprintf(stderr, "Usage: %s [options] my_ecdsa_key_file his_ecdsa_key_file [host] port\n\n", program_name);
 	fprintf(stderr, "Valid options are:\n"
-		"  -c, --cipher            Cipher, either aes-256-gcm or chacha20-poly1305.\n"
-		"  -d, --datagram          Enable datagram mode.\n"
-		"  -k, --key-type          Key type, either ecdsa or ed25519.\n"
-		"  -q, --quit              Quit when EOF occurs on stdin.\n"
-		"  -r, --readonly          Only send data from the socket to stdout.\n"
+	        "  -c, --cipher            Cipher, either aes-256-gcm or chacha20-poly1305.\n"
+	        "  -d, --datagram          Enable datagram mode.\n"
+	        "  -k, --key-type          Key type, either ecdsa or ed25519.\n"
+	        "  -q, --quit              Quit when EOF occurs on stdin.\n"
+	        "  -r, --readonly          Only send data from the socket to stdout.\n"
 #ifdef HAVE_LINUX
 	        "  -t, --tun               Use a tun device instead of stdio.\n"
 #endif
@@ -134,17 +134,19 @@ int main(int argc, char *argv[]) {
 	bool quit = false;
 
 	while((r = getopt_long(argc, argv, "c:dk:qrstwL:W:v46", long_options, &option_index)) != EOF) {
-		switch (r) {
+		switch(r) {
 		case 0:   /* long option */
 			break;
 
 		case 'c': /* cipher type */
 			ciphertype = sptps_parse_cipher(optarg);
-			if (!ciphertype) {
+
+			if(!ciphertype) {
 				fprintf(stderr, "unsupported cipher %s.\n", optarg);
 				usage();
 				return 1;
 			}
+
 			break;
 
 		case 'd': /* datagram mode */
@@ -152,16 +154,17 @@ int main(int argc, char *argv[]) {
 			break;
 
 		case 'k': /* key type */
-			if (strcasecmp(optarg, "ecdsa") == 0) {
+			if(strcasecmp(optarg, "ecdsa") == 0) {
 				keytype = SPTPS_KEY_ECDSA;
 
-			} else if (strcasecmp(optarg, "ed25519") == 0) {
+			} else if(strcasecmp(optarg, "ed25519") == 0) {
 				keytype = SPTPS_KEY_ED25519;
 			} else {
 				fprintf(stderr, "unsupported key type %s.\n", optarg);
 				usage();
 				return 1;
 			}
+
 			break;
 
 		case 'q': /* close connection on EOF from stdin */

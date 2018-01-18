@@ -326,6 +326,7 @@ int cmd_invite(int argc, char *argv[]) {
 	}
 
 	snprintf(filename, sizeof(filename), "%s" SLASH "invitations", confbase);
+
 	if(mkdir(filename, 0700) && errno != EEXIST) {
 		fprintf(stderr, "Could not create directory %s: %s\n", filename, strerror(errno));
 		return 1;
@@ -375,8 +376,11 @@ int cmd_invite(int argc, char *argv[]) {
 	ecdsa_t *key;
 	const int keytype = get_key_type();
 	const char *privkey_file = "ed25519_key.priv";
-	if (keytype == SPTPS_KEY_ECDSA)
+
+	if(keytype == SPTPS_KEY_ECDSA) {
 		privkey_file = "ecdsa_key.priv";
+	}
+
 	snprintf(filename, sizeof(filename), "%s" SLASH "invitations" SLASH "%s", confbase, privkey_file);
 
 	// Remove the key if there are no outstanding invitations.
@@ -900,8 +904,11 @@ make_names:
 	}
 
 	const char *privkey_file = "ed25519_key.priv";
-	if (keytype == SPTPS_KEY_ECDSA)
+
+	if(keytype == SPTPS_KEY_ECDSA) {
 		privkey_file = "ecdsa_key.priv";
+	}
+
 	snprintf(filename, sizeof(filename), "%s" SLASH "%s", confbase, privkey_file);
 	f = fopenmask(filename, "w", 0600);
 
@@ -1259,6 +1266,7 @@ next:
 	// Check if the hash of the key he gave us matches the hash in the URL.
 	char *fingerprint = line + 2;
 	char hishash[64];
+
 	if(sha512(fingerprint, strlen(fingerprint), hishash)) {
 		fprintf(stderr, "Could not create digest\n%s\n", line + 2);
 		return 1;

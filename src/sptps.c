@@ -86,29 +86,35 @@ static bool sptps_encrypt(sptps_t *s, uint32_t seqno, uint8_t type, bool store_l
 	size_t headerlen = 0;
 
 	/* Store record length (optional) and type. */
-	if (store_len) {
+	if(store_len) {
 		uint16_t netlen = htons(inlen);
 		headerlen = sizeof(netlen);
 		memcpy(header, &netlen, headerlen);
 	}
+
 	header[headerlen++] = type;
 
-	if (s->ciphertype == SPTPS_CIPHER_AES_256_GCM) {
+	if(s->ciphertype == SPTPS_CIPHER_AES_256_GCM) {
 		seqno = htonl(seqno);
-		if(!cipher_set_counter(s->outcipher, &seqno, sizeof seqno))
-			return false;
 
-		if(!cipher_gcm_encrypt_start(s->outcipher, header, headerlen, outdata, NULL))
+		if(!cipher_set_counter(s->outcipher, &seqno, sizeof seqno)) {
 			return false;
+		}
 
-		if(!cipher_gcm_encrypt_finish(s->outcipher, indata, inlen, outdata + headerlen, NULL))
+		if(!cipher_gcm_encrypt_start(s->outcipher, header, headerlen, outdata, NULL)) {
 			return false;
+		}
+
+		if(!cipher_gcm_encrypt_finish(s->outcipher, indata, inlen, outdata + headerlen, NULL)) {
+			return false;
+		}
 	} else {
 		/* Don't encrypt the record length for chacha_poly1305. */
-		if (store_len) {
+		if(store_len) {
 			outdata += 2;
 			headerlen -= 2;
 		}
+
 		memcpy(outdata + headerlen, indata, inlen);
 		chacha_poly1305_encrypt(s->outcipher, seqno, outdata, inlen + headerlen, outdata, NULL);
 	}
@@ -117,24 +123,31 @@ static bool sptps_encrypt(sptps_t *s, uint32_t seqno, uint8_t type, bool store_l
 }
 
 static bool sptps_decrypt(sptps_t *s, uint32_t seqno, const void *indata, size_t inlen, void *outdata, size_t *outlen) {
-	if (s->ciphertype == SPTPS_CIPHER_AES_256_GCM) {
-		if (s->inprogress) {
+	if(s->ciphertype == SPTPS_CIPHER_AES_256_GCM) {
+		if(s->inprogress) {
 			// Decrypt in progress, finish it
-			if(!cipher_gcm_decrypt_finish(s->incipher, indata, inlen, outdata, outlen))
+			if(!cipher_gcm_decrypt_finish(s->incipher, indata, inlen, outdata, outlen)) {
 				return false;
+			}
 		} else {
 			seqno = htonl(seqno);
-			if(!cipher_set_counter(s->incipher, &seqno, sizeof seqno))
-				return false;
 
-			if(!cipher_gcm_decrypt(s->incipher, indata, inlen, outdata, outlen))
+			if(!cipher_set_counter(s->incipher, &seqno, sizeof seqno)) {
 				return false;
+			}
+
+			if(!cipher_gcm_decrypt(s->incipher, indata, inlen, outdata, outlen)) {
+				return false;
+			}
 		}
+
 		s->inprogress = false;
 	} else {
-		if (!chacha_poly1305_decrypt(s->incipher, seqno, indata, inlen, outdata, outlen))
+		if(!chacha_poly1305_decrypt(s->incipher, seqno, indata, inlen, outdata, outlen)) {
 			return false;
+		}
 	}
+
 	return true;
 }
 
@@ -150,8 +163,9 @@ static bool send_record_priv_datagram(sptps_t *s, uint8_t type, const void *data
 
 	if(s->outstate) {
 		// If first handshake has finished, encrypt and HMAC
-		if(!sptps_encrypt(s, seqno, type, false, data, len, buffer + 4))
+		if(!sptps_encrypt(s, seqno, type, false, data, len, buffer + 4)) {
 			return error(s, EINVAL, "Error encrypting record");
+		}
 
 		return s->send_data(s->handle, type, buffer, len + 21UL);
 	} else {
@@ -174,8 +188,9 @@ static bool send_record_priv(sptps_t *s, uint8_t type, const void *data, uint16_
 
 	if(s->outstate) {
 		// If first handshake has finished, encrypt and HMAC
-		if(!sptps_encrypt(s, seqno, type, true, data, len, buffer))
+		if(!sptps_encrypt(s, seqno, type, true, data, len, buffer)) {
 			return error(s, EINVAL, "Error encrypting record");
+		}
 
 		return s->send_data(s->handle, type, buffer, len + 19UL);
 	} else {
@@ -210,8 +225,10 @@ static bool send_kex(sptps_t *s) {
 		return false;
 	}
 
-	if(!(s->ecdh = ecdh_alloc(ecdsa_keytype(s->mykey))))
+	if(!(s->ecdh = ecdh_alloc(ecdsa_keytype(s->mykey)))) {
 		return error(s, EINVAL, "Failed to allocate ECDH public key");
+	}
+
 	size_t keylen = ecdh_size(s->ecdh);
 
 	s->mykex = realloc(s->mykex, 1 + 32 + keylen);
@@ -257,22 +274,23 @@ static bool send_sig(sptps_t *s) {
 	return send_record_priv(s, SPTPS_HANDSHAKE, sig, sizeof(sig));
 }
 
-static bool sptps_init_ciphers(sptps_t *s)
-{
+static bool sptps_init_ciphers(sptps_t *s) {
 	bool ret = false;
 
-	switch (s->ciphertype) {
+	switch(s->ciphertype) {
 	case SPTPS_CIPHER_CHACHA20_POLY1305:
 		s->incipher = chacha_poly1305_init();
 		s->outcipher = chacha_poly1305_init();
 		ret = (s->incipher && s->outcipher);
 		break;
+
 	case SPTPS_CIPHER_AES_256_GCM:
 		s->incipher = cipher_open_by_name("aes-256-gcm");
 		s->outcipher = cipher_open_by_name("aes-256-gcm");
 		ret = (s->incipher && s->outcipher);
 		break;
 	}
+
 	return ret;
 }
 
@@ -280,16 +298,19 @@ static bool sptps_init_ciphers(sptps_t *s)
 static bool generate_key_material(sptps_t *s, const char *shared, size_t len) {
 	// Initialise cipher structure if necessary
 	if(!s->outstate) {
-		if(!sptps_init_ciphers(s))
+		if(!sptps_init_ciphers(s)) {
 			return error(s, EINVAL, "Failed to open cipher");
+		}
 	}
 
 	// Allocate memory for key material
 	size_t keylen;
-	if (s->ciphertype == SPTPS_CIPHER_AES_256_GCM)
+
+	if(s->ciphertype == SPTPS_CIPHER_AES_256_GCM) {
 		keylen = cipher_keylength(s->incipher) + cipher_keylength(s->outcipher);
-	else
+	} else {
 		keylen = 2 * CHACHA_POLY1305_KEYLEN;
+	}
 
 	s->key = realloc(s->key, keylen);
 
@@ -331,21 +352,24 @@ static bool receive_ack(sptps_t *s, const char *data, uint16_t len) {
 	}
 
 	bool ret;
+
 	if(s->initiator) {
-		if (s->ciphertype == SPTPS_CIPHER_AES_256_GCM) {
+		if(s->ciphertype == SPTPS_CIPHER_AES_256_GCM) {
 			ret = cipher_set_counter_key(s->incipher, s->key);
 		} else {
 			ret = chacha_poly1305_set_key(s->incipher, s->key);
 		}
 	} else {
-		if (s->ciphertype == SPTPS_CIPHER_AES_256_GCM) {
+		if(s->ciphertype == SPTPS_CIPHER_AES_256_GCM) {
 			ret = cipher_set_counter_key(s->incipher, s->key + cipher_keylength(s->outcipher));
 		} else {
 			ret = chacha_poly1305_set_key(s->incipher, s->key + CHACHA_POLY1305_KEYLEN);
 		}
 	}
-	if(!ret)
+
+	if(!ret) {
 		return error(s, EINVAL, "Failed to set counter");
+	}
 
 	free(s->key);
 	s->key = NULL;
@@ -358,6 +382,7 @@ static bool receive_ack(sptps_t *s, const char *data, uint16_t len) {
 static bool receive_kex(sptps_t *s, const char *data, uint16_t len) {
 	// Verify length of the HELLO record
 	size_t keylen = ecdh_size(s->ecdh);
+
 	if(len != 1 + 32 + keylen) {
 		return error(s, EIO, "Invalid KEX record length");
 	}
@@ -405,6 +430,7 @@ static bool receive_sig(sptps_t *s, const char *data, uint16_t len) {
 
 	// Compute shared secret.
 	char shared[ecdh_shared_size(s->ecdh)];
+
 	if(!ecdh_compute_shared(s->ecdh, s->hiskex + 1 + 32, shared)) {
 		return error(s, EINVAL, "Failed to compute ECDH shared secret");
 	}
@@ -429,21 +455,24 @@ static bool receive_sig(sptps_t *s, const char *data, uint16_t len) {
 
 	// TODO: only set new keys after ACK has been set/received
 	bool ret;
+
 	if(s->initiator) {
-		if (s->ciphertype == SPTPS_CIPHER_AES_256_GCM) {
+		if(s->ciphertype == SPTPS_CIPHER_AES_256_GCM) {
 			ret = cipher_set_counter_key(s->outcipher, s->key + cipher_keylength(s->incipher));
 		} else {
 			ret = chacha_poly1305_set_key(s->outcipher, s->key + CHACHA_POLY1305_KEYLEN);
 		}
 	} else {
-		if (s->ciphertype == SPTPS_CIPHER_AES_256_GCM) {
+		if(s->ciphertype == SPTPS_CIPHER_AES_256_GCM) {
 			ret = cipher_set_counter_key(s->outcipher, s->key);
 		} else {
 			ret = chacha_poly1305_set_key(s->outcipher, s->key);
 		}
 	}
-	if(!ret)
+
+	if(!ret) {
 		return error(s, EINVAL, "Failed to set counter");
+	}
 
 	return true;
 }
@@ -633,7 +662,7 @@ static bool sptps_receive_data_datagram(sptps_t *s, const char *data, size_t len
 
 	size_t outlen;
 
-	if (!sptps_decrypt(s, seqno, data + 4, len - 4, buffer, &outlen)) {
+	if(!sptps_decrypt(s, seqno, data + 4, len - 4, buffer, &outlen)) {
 		return error(s, EIO, "Failed to decrypt and verify packet");
 	}
 
@@ -670,17 +699,22 @@ static bool sptps_receive_data_datagram(sptps_t *s, const char *data, size_t len
 }
 
 static bool sptps_get_reclen(sptps_t *s, uint32_t seqno) {
-	if (s->instate && s->ciphertype == SPTPS_CIPHER_AES_256_GCM) {
+	if(s->instate && s->ciphertype == SPTPS_CIPHER_AES_256_GCM) {
 		seqno = htonl(seqno);
-		if(!cipher_set_counter(s->incipher, &seqno, 4))
-			return false;
 
-		if(!cipher_gcm_decrypt_start(s->incipher, s->inbuf, 2, &s->reclen, NULL))
+		if(!cipher_set_counter(s->incipher, &seqno, 4)) {
 			return false;
+		}
+
+		if(!cipher_gcm_decrypt_start(s->incipher, s->inbuf, 2, &s->reclen, NULL)) {
+			return false;
+		}
+
 		s->inprogress = true;
 	} else {
 		memcpy(&s->reclen, s->inbuf, 2);
 	}
+
 	s->reclen = ntohs(s->reclen);
 
 	return true;
@@ -720,8 +754,9 @@ size_t sptps_receive_data(sptps_t *s, const void *data, size_t len) {
 
 		// Get the length bytes
 
-		if(!sptps_get_reclen(s, s->inseqno))
+		if(!sptps_get_reclen(s, s->inseqno)) {
 			return error(s, EINVAL, "Failed to get record length");
+		}
 
 		// If we have the length bytes, ensure our buffer can hold the whole request.
 		s->inbuf = realloc(s->inbuf, s->reclen + 19UL);
@@ -758,7 +793,7 @@ size_t sptps_receive_data(sptps_t *s, const void *data, size_t len) {
 
 	// Check HMAC and decrypt.
 	if(s->instate) {
-		if (!sptps_decrypt(s, seqno, s->inbuf + 2UL, s->reclen + 17UL, s->inbuf + 2UL, NULL)) {
+		if(!sptps_decrypt(s, seqno, s->inbuf + 2UL, s->reclen + 17UL, s->inbuf + 2UL, NULL)) {
 			return error(s, EINVAL, "Failed to decrypt and verify record");
 		}
 	}
@@ -790,10 +825,14 @@ size_t sptps_receive_data(sptps_t *s, const void *data, size_t len) {
 }
 
 int sptps_parse_cipher(const char *cipher) {
-	if (cipher == NULL || strcasecmp(cipher, "chacha20-poly1305") == 0)
+	if(cipher == NULL || strcasecmp(cipher, "chacha20-poly1305") == 0) {
 		return SPTPS_CIPHER_CHACHA20_POLY1305;
-	if (strcasecmp(cipher, "aes-256-gcm") == 0)
+	}
+
+	if(strcasecmp(cipher, "aes-256-gcm") == 0) {
 		return SPTPS_CIPHER_AES_256_GCM;
+	}
+
 	return SPTPS_CIPHER_INVALID;
 }
 
@@ -850,13 +889,14 @@ bool sptps_start(sptps_t *s, void *handle, bool initiator, bool datagram, int ci
 // Stop a SPTPS session.
 bool sptps_stop(sptps_t *s) {
 	// Clean up any resources.
-	if (s->ciphertype == SPTPS_CIPHER_AES_256_GCM) {
+	if(s->ciphertype == SPTPS_CIPHER_AES_256_GCM) {
 		cipher_close(s->incipher);
 		cipher_close(s->outcipher);
 	} else {
 		chacha_poly1305_exit(s->incipher);
 		chacha_poly1305_exit(s->outcipher);
 	}
+
 	ecdh_free(s->ecdh);
 	free(s->inbuf);
 	free(s->mykex);

@@ -39,9 +39,9 @@ struct ecdsa_operations {
 };
 
 // Key types
-#define SPTPS_KEY_NONE		0
-#define SPTPS_KEY_ED25519	1
-#define SPTPS_KEY_ECDSA		2
+#define SPTPS_KEY_NONE          0
+#define SPTPS_KEY_ED25519       1
+#define SPTPS_KEY_ECDSA         2
 
 extern ecdsa_t *ecdsa_set_base64_public_key(const char *p) __attribute__((__malloc__));
 extern char *ecdsa_get_base64_public_key(ecdsa_t *ecdsa);

@@ -276,8 +276,10 @@ int fsck(const char *argv0) {
 	char *keystr = "ed25519";
 	int keytype = get_key_type();
 
-	if (keytype == SPTPS_KEY_ECDSA)
+	if(keytype == SPTPS_KEY_ECDSA) {
 		keystr = "ecdsa";
+	}
+
 	snprintf(fname, sizeof(fname), "%s/%s_key.priv", confbase, keystr);
 
 	if(stat(fname, &st)) {
@@ -294,6 +296,7 @@ int fsck(const char *argv0) {
 			fprintf(stderr, "ERROR: could not open %s: %s\n", fname, strerror(errno));
 			return 1;
 		}
+
 		ecdsa_priv = ecdsa_read_pem_private_key(keytype, f);
 		fclose(f);
 

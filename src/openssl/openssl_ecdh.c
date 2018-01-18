@@ -33,15 +33,16 @@
 #define ECDH_SHARED_SIZE 66
 
 static size_t openssl_ecdh_size(void) {
-        return ECDH_SIZE;
+	return ECDH_SIZE;
 }
 
 static size_t openssl_ecdh_shared_size(void) {
-        return ECDH_SHARED_SIZE;
+	return ECDH_SHARED_SIZE;
 }
 
 static void *openssl_ecdh_generate_public(void *pubkey) {
 	EC_KEY *ecdh = EC_KEY_new_by_curve_name(NID_secp521r1);
+
 	if(!ecdh) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "Generating EC key_by_curve_name failed: %s", ERR_error_string(ERR_get_error(), NULL));
 		return NULL;
@@ -54,6 +55,7 @@ static void *openssl_ecdh_generate_public(void *pubkey) {
 	}
 
 	const EC_POINT *point = EC_KEY_get0_public_key(ecdh);
+
 	if(!point) {
 		EC_KEY_free(ecdh);
 		logger(DEBUG_ALWAYS, LOG_ERR, "Getting public key failed: %s", ERR_error_string(ERR_get_error(), NULL));
@@ -61,6 +63,7 @@ static void *openssl_ecdh_generate_public(void *pubkey) {
 	}
 
 	size_t result = EC_POINT_point2oct(EC_KEY_get0_group(ecdh), point, POINT_CONVERSION_COMPRESSED, pubkey, ECDH_SIZE, NULL);
+
 	if(!result) {
 		EC_KEY_free(ecdh);
 		logger(DEBUG_ALWAYS, LOG_ERR, "Converting EC_POINT to binary failed: %s", ERR_error_string(ERR_get_error(), NULL));
@@ -73,6 +76,7 @@ static void *openssl_ecdh_generate_public(void *pubkey) {
 static bool openssl_ecdh_compute_shared(void *v, const void *pubkey, void *shared) {
 	EC_KEY *ecdh = v;
 	EC_POINT *point = EC_POINT_new(EC_KEY_get0_group(ecdh));
+
 	if(!point) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "EC_POINT_new() failed: %s", ERR_error_string(ERR_get_error(), NULL));
 		EC_KEY_free(ecdh);
@@ -80,6 +84,7 @@ static bool openssl_ecdh_compute_shared(void *v, const void *pubkey, void *share
 	}
 
 	int result = EC_POINT_oct2point(EC_KEY_get0_group(ecdh), point, pubkey, ECDH_SIZE, NULL);
+
 	if(!result) {
 		EC_POINT_free(point);
 		EC_KEY_free(ecdh);
@@ -101,8 +106,10 @@ static bool openssl_ecdh_compute_shared(void *v, const void *pubkey, void *share
 
 static void openssl_ecdh_free(void *v) {
 	EC_KEY *ecdh = v;
-	if(ecdh)
+
+	if(ecdh) {
 		EC_KEY_free(ecdh);
+	}
 }
 
 struct ecdh_operations openssl_ecdh_operations = {

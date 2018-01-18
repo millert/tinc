@@ -108,9 +108,12 @@ bool send_req_key(node_t *to) {
 	if(to->status.sptps) {
 		int keytype = SPTPS_KEY_ED25519;
 		char *str;
-		if (get_config_string(lookup_config(config_tree, "SptpsKeyType"), &str)) {
-			if (strcasecmp(str, "ecdsa") == 0)
+
+		if(get_config_string(lookup_config(config_tree, "SptpsKeyType"), &str)) {
+			if(strcasecmp(str, "ecdsa") == 0) {
 				keytype = SPTPS_KEY_ECDSA;
+			}
+
 			free(str);
 		}
 
@@ -196,9 +199,12 @@ static bool req_key_ext_h(connection_t *c, const char *request, node_t *from, no
 
 	int keytype = SPTPS_KEY_ED25519;
 	char *str;
-	if (get_config_string(lookup_config(config_tree, "SptpsKeyType"), &str)) {
-		if (strcasecmp(str, "ecdsa") == 0)
+
+	if(get_config_string(lookup_config(config_tree, "SptpsKeyType"), &str)) {
+		if(strcasecmp(str, "ecdsa") == 0) {
 			keytype = SPTPS_KEY_ECDSA;
+		}
+
 		free(str);
 	}
 

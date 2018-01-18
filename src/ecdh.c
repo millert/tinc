@@ -26,7 +26,7 @@
 
 #define __TINC_ECDH_INTERNAL__
 typedef struct ecdh {
-        struct ecdh_operations *ops;
+	struct ecdh_operations *ops;
 	void *key;
 } ecdh_t;
 
@@ -41,16 +41,20 @@ extern struct ecdh_operations ed25519_ecdh_operations;
 
 ecdh_t *ecdh_alloc(int keytype) {
 	struct ecdh_operations *ops;
-	switch (keytype) {
+
+	switch(keytype) {
 	case SPTPS_KEY_ED25519:
 		ops = &ed25519_ecdh_operations;
 		break;
+
 	case SPTPS_KEY_ECDSA:
 		ops = &openssl_ecdh_operations;
 		break;
+
 	default:
 		return NULL;
 	}
+
 	ecdh_t *ecdh = xmalloc(sizeof(*ecdh));
 	ecdh->ops = ops;
 	ecdh->key = NULL;
@@ -67,19 +71,21 @@ size_t ecdh_shared_size(ecdh_t *ecdh) {
 }
 
 bool ecdh_generate_public(ecdh_t *ecdh, void *pubkey) {
-	if (!ecdh) {
+	if(!ecdh) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "%s called with unallocated ecdh", __func__);
 		return false;
 	}
+
 	ecdh->key = ecdh->ops->generate_public(pubkey);
 	return ecdh->key != NULL;
 }
 
 bool ecdh_compute_shared(ecdh_t *ecdh, const void *pubkey, void *shared) {
-	if (!ecdh) {
+	if(!ecdh) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "%s called with unallocated ecdh", __func__);
 		return false;
 	}
+
 	bool ret = ecdh->ops->compute_shared(ecdh->key, pubkey, shared);
 	free(ecdh);
 	return ret;

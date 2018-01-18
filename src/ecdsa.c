@@ -37,19 +37,23 @@ extern struct ecdsa_operations ed25519_ecdsa_operations;
 //
 
 static ecdsa_t *ecdsa_set_public_key(const char *pubkey, int len) {
-	ecdsa_t *ecdsa = xzalloc(sizeof *ecdsa);
-	if (len == 32) {
+	ecdsa_t *ecdsa = xzalloc(sizeof(*ecdsa));
+
+	if(len == 32) {
 		// ed25519
 		ecdsa->ops = &ed25519_ecdsa_operations;
 	} else {
 		// openssl
 		ecdsa->ops = &openssl_ecdsa_operations;
 	}
+
 	ecdsa->key = ecdsa->ops->set_public_key(pubkey, len);
-	if (ecdsa->key == NULL) {
+
+	if(ecdsa->key == NULL) {
 		free(ecdsa);
 		ecdsa = NULL;
 	}
+
 	return ecdsa;
 }
 
@@ -58,6 +62,7 @@ ecdsa_t *ecdsa_set_base64_public_key(const char *p) {
 	char pubkey[len / 4 * 3 + 3];
 
 	len = b64decode(p, pubkey, len);
+
 	if(!len) {
 		logger(DEBUG_ALWAYS, LOG_DEBUG, "Invalid base64 data in conf file\n");
 		return NULL;
@@ -69,59 +74,67 @@ ecdsa_t *ecdsa_set_base64_public_key(const char *p) {
 char *ecdsa_get_base64_public_key(ecdsa_t *ecdsa) {
 	int len;
 	char *pubkey = ecdsa->ops->get_public_key(ecdsa->key, &len);
-        char *base64 = xmalloc(len * 4 / 3 + 5);
-        b64encode(pubkey, base64, len);
+	char *base64 = xmalloc(len * 4 / 3 + 5);
+	b64encode(pubkey, base64, len);
 
-        free(pubkey);
+	free(pubkey);
 
-        return base64;
+	return base64;
 }
 
 ecdsa_t *ecdsa_read_pem_public_key(int keytype, FILE *fp) {
 	struct ecdsa_operations *ops;
 
-	switch (keytype) {
+	switch(keytype) {
 	case SPTPS_KEY_ED25519:
 		ops = &ed25519_ecdsa_operations;
 		break;
+
 	case SPTPS_KEY_ECDSA:
 		ops = &openssl_ecdsa_operations;
 		break;
+
 	default:
 		return NULL;
 	}
 
-	ecdsa_t *ecdsa = xzalloc(sizeof *ecdsa);
+	ecdsa_t *ecdsa = xzalloc(sizeof(*ecdsa));
 	ecdsa->ops = ops;
 	ecdsa->key = ops->read_pem_public_key(fp);
-	if (ecdsa->key == NULL) {
+
+	if(ecdsa->key == NULL) {
 		free(ecdsa);
 		ecdsa = NULL;
 	}
+
 	return ecdsa;
 }
 
 ecdsa_t *ecdsa_read_pem_private_key(int keytype, FILE *fp) {
 	struct ecdsa_operations *ops;
 
-	switch (keytype) {
+	switch(keytype) {
 	case SPTPS_KEY_ED25519:
 		ops = &ed25519_ecdsa_operations;
 		break;
+
 	case SPTPS_KEY_ECDSA:
 		ops = &openssl_ecdsa_operations;
 		break;
+
 	default:
 		return NULL;
 	}
 
-	ecdsa_t *ecdsa = xzalloc(sizeof *ecdsa);
+	ecdsa_t *ecdsa = xzalloc(sizeof(*ecdsa));
 	ecdsa->ops = ops;
 	ecdsa->key = ops->read_pem_private_key(fp);
-	if (ecdsa->key == NULL) {
+
+	if(ecdsa->key == NULL) {
 		free(ecdsa);
 		ecdsa = NULL;
 	}
+
 	return ecdsa;
 }
 
@@ -150,7 +163,7 @@ bool ecdsa_active(ecdsa_t *ecdsa) {
 }
 
 void ecdsa_free(ecdsa_t *ecdsa) {
-	if (ecdsa != NULL) {
+	if(ecdsa != NULL) {
 		ecdsa->ops->free(ecdsa->key);
 		free(ecdsa);
 	}
@@ -158,35 +171,42 @@ void ecdsa_free(ecdsa_t *ecdsa) {
 
 int ecdsa_keytype(ecdsa_t *ecdsa) {
 	int keytype = SPTPS_KEY_NONE;
-	if (ecdsa != NULL) {
-		if (ecdsa->ops == &openssl_ecdsa_operations)
+
+	if(ecdsa != NULL) {
+		if(ecdsa->ops == &openssl_ecdsa_operations) {
 			keytype = SPTPS_KEY_ECDSA;
-		else if (ecdsa->ops == &ed25519_ecdsa_operations)
+		} else if(ecdsa->ops == &ed25519_ecdsa_operations) {
 			keytype = SPTPS_KEY_ED25519;
+		}
 	}
+
 	return keytype;
 }
 
 ecdsa_t *ecdsa_generate(int keytype) {
 	struct ecdsa_operations *ops;
 
-	switch (keytype) {
+	switch(keytype) {
 	case SPTPS_KEY_ED25519:
 		ops = &ed25519_ecdsa_operations;
 		break;
+
 	case SPTPS_KEY_ECDSA:
 		ops = &openssl_ecdsa_operations;
 		break;
+
 	default:
 		return NULL;
 	}
 
-	ecdsa_t *ecdsa = xzalloc(sizeof *ecdsa);
+	ecdsa_t *ecdsa = xzalloc(sizeof(*ecdsa));
 	ecdsa->ops = ops;
 	ecdsa->key = ops->generate();
-	if (ecdsa->key == NULL) {
+
+	if(ecdsa->key == NULL) {
 		free(ecdsa);
 		ecdsa = NULL;
 	}
+
 	return ecdsa;
 }
