@@ -19,7 +19,7 @@
 
 #include "system.h"
 
-#define __TINC_ECDSA_INTERNAL__
+#define TINC_ECDSA_INTERNAL
 typedef struct {
 	struct ecdsa_operations *ops;
 	void *key;

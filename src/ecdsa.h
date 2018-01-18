@@ -24,12 +24,6 @@
 typedef struct ecdsa ecdsa_t;
 #endif
 
-<<<<<<< 0379013cae8053a7922f84cd82ce0c10815ac04b
-extern ecdsa_t *ecdsa_set_base64_public_key(const char *p) __attribute__((__malloc__));
-extern char *ecdsa_get_base64_public_key(ecdsa_t *ecdsa);
-extern ecdsa_t *ecdsa_read_pem_public_key(FILE *fp) __attribute__((__malloc__));
-extern ecdsa_t *ecdsa_read_pem_private_key(FILE *fp) __attribute__((__malloc__));
-=======
 struct ecdsa_operations {
 	void *(*set_public_key)(const char *pubkey, int len);
 	char *(*get_public_key)(void *ecdsa, int *len);

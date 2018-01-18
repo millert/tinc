@@ -259,7 +259,13 @@ static bool req_key_ext_h(connection_t *c, const char *request, node_t *from, no
 		from->status.validkey = false;
 		from->status.waitingforkey = true;
 		from->last_req_key = now.tv_sec;
-		sptps_start(&from->sptps, from, false, true, myself->connection->ecdsa, from->ecdsa, label, sizeof(label), send_sptps_data_myself, receive_sptps_record);
+
+		char *cipher = NULL;
+		get_config_string(lookup_config(config_tree, "SptpsCipher"), &cipher);
+		int ciphertype = sptps_parse_cipher(cipher);
+		free(cipher);
+
+		sptps_start(&from->sptps, from, false, true, ciphertype, myself->connection->ecdsa, from->ecdsa, label, sizeof(label), send_sptps_data_myself, receive_sptps_record);
 		sptps_receive_data(&from->sptps, buf, len);
 		send_mtu_info(myself, from, MTU);
 		return true;

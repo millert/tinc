@@ -126,7 +126,7 @@ static void usage(bool status) {
 		       "  pid                        Show PID of currently running tincd.\n"
 		       "  generate-keys [bits]       Generate new RSA and SPTPS public/private keypairs.\n"
 		       "  generate-rsa-keys [bits]   Generate a new RSA public/private keypair.\n"
-		       "  generate-sptps-keys      Generate a new SPTPS public/private keypair.\n"
+		       "  generate-sptps-keys        Generate a new SPTPS public/private keypair.\n"
 		       "  dump                       Dump a list of one of the following things:\n"
 		       "    [reachable] nodes        - all known nodes in the VPN\n"
 		       "    edges                    - all known connections in the VPN\n"
@@ -287,7 +287,7 @@ static void disable_old_keys(const char *filename, const char *what) {
 		}
 
 		if(w) {
-			if(block || foundkey)
+			if(block || foundkey) {
 				fputc('#', w);
 			}
 
@@ -410,8 +410,9 @@ static bool ecdsa_keygen(bool ask) {
 	char *keystr = "ed25519";
 	int keytype = get_key_type();
 
-	if (keytype == SPTPS_KEY_ECDSA)
+	if(keytype == SPTPS_KEY_ECDSA) {
 		keystr = "ecdsa";
+	}
 
 	fprintf(stderr, "Generating SPTPS keypair:\n");
 
@@ -1697,7 +1698,7 @@ int get_cipher_type(void) {
 
 	char buf[4096];
 	char *value;
-	while(fgets(buf, sizeof buf, f)) {
+	while(fgets(buf, sizeof(buf), f)) {
 		int len = strcspn(buf, "\t =");
 		value = buf + len;
 		value += strspn(value, "\t ");
@@ -1729,7 +1730,7 @@ int get_key_type(void) {
 
 	char buf[4096];
 	char *value;
-	while(fgets(buf, sizeof buf, f)) {
+	while(fgets(buf, sizeof(buf), f)) {
 		int len = strcspn(buf, "\t =");
 		value = buf + len;
 		value += strspn(value, "\t ");
@@ -2329,6 +2330,7 @@ static int cmd_init(int argc, char *argv[]) {
 
 }
 
+static int cmd_generate_keys(int argc, char *argv[]) {
 	if(argc > 2) {
 		fprintf(stderr, "Too many arguments!\n");
 		return 1;
