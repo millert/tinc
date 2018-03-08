@@ -86,8 +86,9 @@ void async_pool_free(async_pool_t *pool) {
 		return;
 	}
 
+	assert(mtx_lock(&pool->mtx) == thrd_success);
+
 	if (pool->consume) {
-		assert(mtx_lock(&pool->mtx) == thrd_success);
 		pool->active = false;
 		cnd_signal(&pool->cnd);
 		cnd_wait(&pool->cnd, &pool->mtx);
