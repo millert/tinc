@@ -62,8 +62,6 @@ static bool read_packet(vpn_packet_t *packet) {
 
 	switch(device_type) {
 	case DEVICE_TYPE_TUN:
-		packet->offset = DEFAULT_PACKET_OFFSET;
-		packet->priority = 0;
 		inlen = read(real_fd, DATA(packet) + 10, MTU - 10);
 
 		if(inlen <= 0) {
@@ -138,7 +136,11 @@ static bool write_packet(vpn_packet_t *packet) {
 static int read_thread(void *arg) {
 	while(active) {
 		vpn_packet_t *packet = async_pool_get(device_read_pool);
-		if (read_packet(packet)) {
+
+		packet->offset = DEFAULT_PACKET_OFFSET;
+		packet->priority = 0;
+
+		if(read_packet(packet)) {
 			async_pool_put(device_read_pool, packet);
 			static const uint64_t one = 1;
 			assert(write(device_fd, &one, sizeof(one)) == sizeof(one));
@@ -146,6 +148,7 @@ static int read_thread(void *arg) {
 			abort();
 		}
 	}
+
 	return 0;
 }
 
@@ -239,7 +242,12 @@ static bool setup_device(void) {
 	}
 
 	active = true;
-	thrd = thrd_create(&thrd, read_thread, NULL);
+
+	if(thrd_create(&thrd, read_thread, NULL) != thrd_success) {
+		logger(DEBUG_ALWAYS, LOG_ERR, "Could not create tun/tap thread from %s: %s", device, strerror(errno));
+		active = false;
+		return false;
+	}
 
 	return true;
 }
@@ -249,6 +257,7 @@ static void close_device(void) {
 	real_fd = -1;
 	close(device_fd);
 	device_fd = -1;
+
 	if(active) {
 		active = false;
 		thrd_join(thrd, NULL);
