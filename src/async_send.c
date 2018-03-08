@@ -33,8 +33,8 @@
 
 typedef struct async_send_request {
 	int fd;
-	size_t len;
 	int flags;
+	size_t len;
 	sockaddr_t dest_addr;
 	uint8_t buf[MAXSIZE];
 } async_send_request_t;
@@ -56,10 +56,10 @@ void async_sendto(int fd, const void* buf, size_t len, int flags, const sockaddr
 	async_send_request_t* request = async_pool_get(send_pool);
 
 	request->fd = fd;
-	memcpy(request->buf, buf, len);
-	request->len = len;
 	request->flags = flags;
+	request->len = len;
 	sockaddrcpy(&request->dest_addr, dest_addr);
+	memcpy(request->buf, buf, len);
 
 	async_pool_put(send_pool, request);
 }
