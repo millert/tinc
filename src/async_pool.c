@@ -70,11 +70,14 @@ async_pool_t *async_pool_alloc(size_t nmemb, size_t size, void (*consume)(void *
 		pool->bufs[i] = xmalloc(size);
 	}
 
+	assert(mtx_init(&pool->mtx, mtx_plain) == thrd_success);
 	pool->nmemb = nmemb;
 	pool->active = true;
 	pool->consume = consume;
-	if (pool->consume)
+
+	if(pool->consume) {
 		thrd_create(&pool->thrd, async_pool_thread, pool);
+	}
 	return pool;
 }
 
