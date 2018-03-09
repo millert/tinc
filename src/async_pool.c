@@ -71,6 +71,7 @@ async_pool_t *async_pool_alloc(size_t nmemb, size_t size, void (*consume)(void *
 	}
 
 	assert(mtx_init(&pool->mtx, mtx_plain) == thrd_success);
+	assert(cnd_init(&pool->cnd) == thrd_success);
 	pool->nmemb = nmemb;
 	pool->active = true;
 	pool->consume = consume;
