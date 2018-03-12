@@ -24,8 +24,10 @@
 
 #include <sys/stropts.h>
 #include <sys/sockio.h>
+#include <assert.h>
 #include <stropts.h>
 
+#include "../async_pool.h"
 #include "../conf.h"
 #include "../device.h"
 #include "../logger.h"
@@ -33,6 +35,7 @@
 #include "../net.h"
 #include "../route.h"
 #include "../utils.h"
+#include "../tinycthread.h"
 #include "../xalloc.h"
 
 #ifndef TUNNEWPPA
@@ -49,14 +52,177 @@ static enum {
 	DEVICE_TYPE_TAP,
 } device_type = DEVICE_TYPE_TUN;
 
+#define ASYNC_DEVICE_QUEUE_LENGTH 128
+
+bool active;
+thrd_t thrd;
+async_pool_t *device_read_pool;
 int device_fd = -1;
+int device_pipe[2] = { -1, -1 };
+int real_fd = -1;
 static int ip_fd = -1;
 char *device = NULL;
 char *iface = NULL;
 static const char *device_info = NULL;
 
+static bool read_packet(vpn_packet_t *packet) {
+	int result;
+	struct strbuf sbuf;
+	int f = 0;
+
+	switch(device_type) {
+	case DEVICE_TYPE_TUN:
+		sbuf.maxlen = MTU - 14;
+		sbuf.buf = (char *)DATA(packet) + 14;
+
+		if((result = getmsg(real_fd, NULL, &sbuf, &f)) < 0) {
+			logger(DEBUG_ALWAYS, LOG_ERR, "Error while reading from %s %s: %s", device_info, device, strerror(errno));
+			return false;
+		}
+
+		switch(DATA(packet)[14] >> 4) {
+		case 4:
+			DATA(packet)[12] = 0x08;
+			DATA(packet)[13] = 0x00;
+			break;
+
+		case 6:
+			DATA(packet)[12] = 0x86;
+			DATA(packet)[13] = 0xDD;
+			break;
+
+		default:
+			logger(DEBUG_TRAFFIC, LOG_ERR, "Unknown IP version %d while reading packet from %s %s", DATA(packet)[14] >> 4, device_info, device);
+			return false;
+		}
+
+		memset(DATA(packet), 0, 12);
+		packet->len = sbuf.len + 14;
+		break;
+
+	case DEVICE_TYPE_TAP:
+		sbuf.maxlen = MTU;
+		sbuf.buf = (char *)DATA(packet);
+
+		if((result = getmsg(real_fd, NULL, &sbuf, &f)) < 0) {
+			logger(DEBUG_ALWAYS, LOG_ERR, "Error while reading from %s %s: %s", device_info, device, strerror(errno));
+			return false;
+		}
+
+		packet->len = sbuf.len;
+		break;
+
+	default:
+		abort();
+	}
+
+	logger(DEBUG_TRAFFIC, LOG_DEBUG, "Read packet of %d bytes from %s", packet->len, device_info);
+
+	return true;
+}
+
+static bool write_packet(vpn_packet_t *packet) {
+	logger(DEBUG_TRAFFIC, LOG_DEBUG, "Writing packet of %d bytes to %s", packet->len, device_info);
+
+	struct strbuf sbuf;
+
+	switch(device_type) {
+	case DEVICE_TYPE_TUN:
+		sbuf.len = packet->len - 14;
+		sbuf.buf = (char *)DATA(packet) + 14;
+
+		if(putmsg(real_fd, NULL, &sbuf, 0) < 0) {
+			logger(DEBUG_ALWAYS, LOG_ERR, "Can't write to %s %s: %s", device_info, device, strerror(errno));
+			return false;
+		}
+
+		break;
+
+	case DEVICE_TYPE_TAP:
+		sbuf.len = packet->len;
+		sbuf.buf = (char *)DATA(packet);
+
+		if(putmsg(real_fd, NULL, &sbuf, 0) < 0) {
+			logger(DEBUG_ALWAYS, LOG_ERR, "Can't write to %s %s: %s", device_info, device, strerror(errno));
+			return false;
+		}
+
+		break;
+
+	default:
+		abort();
+	}
+
+	return true;
+}
+
+static int read_thread(void *arg) {
+#if 0
+	fd_set readfds;
+
+	FD_ZERO(&readfds);
+	FD_SET(real_fd, &readfds);
+
+	/* Wait for TUN/TAP to be ready or we get EIO on macOS. */
+	for(;;) {
+		int n = select(real_fd + 1, &readfds, NULL, NULL, NULL);
+
+		if(n != -1 || errno != EINTR) {
+			break;
+		}
+	}
+
+#endif
+
+	while(active) {
+		vpn_packet_t *packet = async_pool_get(device_read_pool);
+
+		packet->offset = DEFAULT_PACKET_OFFSET;
+		packet->priority = 0;
+
+		if(read_packet(packet)) {
+			async_pool_put(device_read_pool, packet);
+			static const uint64_t one = 1;
+			assert(write(device_pipe[1], &one, sizeof(one)) == sizeof(one));
+		} else {
+			abort();
+		}
+	}
+
+	return 0;
+}
+
 static bool setup_device(void) {
 	char *type;
+
+	if(pipe(device_pipe) == -1) {
+		logger(DEBUG_ALWAYS, LOG_ERR, "Could not create pipe %s", strerror(errno));
+		return false;
+	}
+
+	for(int i = 0; i < 2; i++) {
+		int flags = fcntl(device_pipe[i], F_GETFL);
+
+		if(fcntl(device_pipe[i], F_SETFL, flags | O_NONBLOCK) == -1) {
+			logger(DEBUG_ALWAYS, LOG_ERR, "fcntl for %s: %s", device, strerror(errno));
+			return false;
+		}
+
+		flags = fcntl(device_pipe[i], F_GETFL);
+
+		if(fcntl(device_pipe[i], F_SETFL, flags | O_NONBLOCK) == -1) {
+			logger(DEBUG_ALWAYS, LOG_ERR, "fcntl for %s: %s", device, strerror(errno));
+			return false;
+		}
+
+#ifdef FD_CLOEXEC
+		fcntl(device_pipe[i], F_SETFD, FD_CLOEXEC);
+#endif
+	}
+
+	device_fd = device_pipe[0];
+
+	device_read_pool = async_pool_alloc(ASYNC_DEVICE_QUEUE_LENGTH, sizeof(vpn_packet_t), NULL);
 
 	if(!get_config_string(lookup_config(config_tree, "Device"), &device)) {
 		if(routing_mode == RMODE_ROUTER) {
@@ -94,7 +260,7 @@ static bool setup_device(void) {
 		return false;
 	}
 
-	if((device_fd = open(device, O_RDWR, 0)) < 0) {
+	if((real_fd = open(device, O_RDWR, 0)) < 0) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "Could not open %s: %s\n", device, strerror(errno));
 		return false;
 	}
@@ -122,7 +288,7 @@ static bool setup_device(void) {
 		bool found = false;
 
 		while(!found && ppa < 64) {
-			int new_ppa = ioctl(device_fd, I_STR, &strioc_ppa);
+			int new_ppa = ioctl(real_fd, I_STR, &strioc_ppa);
 
 			if(new_ppa >= 0) {
 				ppa = new_ppa;
@@ -138,7 +304,7 @@ static bool setup_device(void) {
 			return false;
 		}
 	} else { /* try this particular one */
-		if((ppa = ioctl(device_fd, I_STR, &strioc_ppa)) < 0) {
+		if((ppa = ioctl(real_fd, I_STR, &strioc_ppa)) < 0) {
 			logger(DEBUG_ALWAYS, LOG_ERR, "Could not assign PPA %d for %s %s!", ppa, device_info, device);
 			return false;
 		}
@@ -286,11 +452,19 @@ static bool setup_device(void) {
 	close(if_fd);
 
 #ifdef FD_CLOEXEC
-	fcntl(device_fd, F_SETFD, FD_CLOEXEC);
+	fcntl(real_fd, F_SETFD, FD_CLOEXEC);
 	fcntl(ip_fd, F_SETFD, FD_CLOEXEC);
 #endif
 
 	logger(DEBUG_ALWAYS, LOG_INFO, "%s is a %s", device, device_info);
+
+	active = true;
+
+	if(thrd_create(&thrd, read_thread, NULL) != thrd_success) {
+		logger(DEBUG_ALWAYS, LOG_ERR, "Could not create tun/tap thread from %s: %s", device, strerror(errno));
+		active = false;
+		return false;
+	}
 
 	return true;
 }
@@ -310,8 +484,22 @@ static void close_device(void) {
 
 	close(ip_fd);
 	ip_fd = -1;
-	close(device_fd);
+	close(real_fd);
+	real_fd = -1;
 	device_fd = -1;
+
+	close(device_pipe[0]);
+	close(device_pipe[1]);
+	device_pipe[0] = -1;
+	device_pipe[1] = -1;
+
+	if(active) {
+		active = false;
+		thrd_join(thrd, NULL);
+	}
+
+	async_pool_free(device_read_pool);
+	device_read_pool = NULL;
 
 	free(device);
 	device = NULL;
@@ -319,100 +507,9 @@ static void close_device(void) {
 	iface = NULL;
 }
 
-static bool read_packet(vpn_packet_t *packet) {
-	int result;
-	struct strbuf sbuf;
-	int f = 0;
-
-	switch(device_type) {
-	case DEVICE_TYPE_TUN:
-		sbuf.maxlen = MTU - 14;
-		sbuf.buf = (char *)DATA(packet) + 14;
-
-		if((result = getmsg(device_fd, NULL, &sbuf, &f)) < 0) {
-			logger(DEBUG_ALWAYS, LOG_ERR, "Error while reading from %s %s: %s", device_info, device, strerror(errno));
-			return false;
-		}
-
-		switch(DATA(packet)[14] >> 4) {
-		case 4:
-			DATA(packet)[12] = 0x08;
-			DATA(packet)[13] = 0x00;
-			break;
-
-		case 6:
-			DATA(packet)[12] = 0x86;
-			DATA(packet)[13] = 0xDD;
-			break;
-
-		default:
-			logger(DEBUG_TRAFFIC, LOG_ERR, "Unknown IP version %d while reading packet from %s %s", DATA(packet)[14] >> 4, device_info, device);
-			return false;
-		}
-
-		memset(DATA(packet), 0, 12);
-		packet->len = sbuf.len + 14;
-		break;
-
-	case DEVICE_TYPE_TAP:
-		sbuf.maxlen = MTU;
-		sbuf.buf = (char *)DATA(packet);
-
-		if((result = getmsg(device_fd, NULL, &sbuf, &f)) < 0) {
-			logger(LOG_ERR, "Error while reading from %s %s: %s", device_info, device, strerror(errno));
-			return false;
-		}
-
-		packet->len = sbuf.len;
-		break;
-
-	default:
-		abort();
-	}
-
-	logger(DEBUG_TRAFFIC, LOG_DEBUG, "Read packet of %d bytes from %s", packet->len, device_info);
-
-	return true;
-}
-
-static bool write_packet(vpn_packet_t *packet) {
-	logger(DEBUG_TRAFFIC, LOG_DEBUG, "Writing packet of %d bytes to %s", packet->len, device_info);
-
-	struct strbuf sbuf;
-
-	switch(device_type) {
-	case DEVICE_TYPE_TUN:
-		sbuf.len = packet->len - 14;
-		sbuf.buf = (char *)DATA(packet) + 14;
-
-		if(putmsg(device_fd, NULL, &sbuf, 0) < 0) {
-			logger(LOG_ERR, "Can't write to %s %s: %s", device_info, device, strerror(errno));
-			return false;
-		}
-
-		break;
-
-	case DEVICE_TYPE_TAP:
-		sbuf.len = packet->len;
-		sbuf.buf = (char *)DATA(packet);
-
-		if(putmsg(device_fd, NULL, &sbuf, 0) < 0) {
-			logger(LOG_ERR, "Can't write to %s %s: %s", device_info, device, strerror(errno));
-			return false;
-		}
-
-		break;
-
-	default:
-		abort();
-	}
-
-	return true;
-}
-
 const devops_t os_devops = {
 	.setup = setup_device,
 	.close = close_device,
-	.read = read_packet,
+	.read = NULL,
 	.write = write_packet,
 };
