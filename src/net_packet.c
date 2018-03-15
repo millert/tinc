@@ -1763,7 +1763,7 @@ void handle_device_data(void *data, int flags) {
 	if(!devops.read) {
 		uint64_t count;
 		assert(read(device_fd, &count, sizeof(count)) == sizeof(count));
-		logger(DEBUG_ALWAYS, LOG_DEBUG, "Got %lu packets", (unsigned long)count);
+		logger(DEBUG_TRAFFIC, LOG_DEBUG, "Got %lu packets", (unsigned long)count);
 		while (count--) {
 			vpn_packet_t *packet = async_pool_ctail(device_read_pool);
 			assert(packet);
