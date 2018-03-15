@@ -45,7 +45,7 @@ async_pool_t *send_pool;
 static void async_send_sendrequest(void *arg) {
 	async_send_request_t *request = arg;
 
-	if (sendto(request->fd, request->buf, request->len, request->flags, &request->dest_addr.sa, SALEN(request->dest_addr.sa)) < 0 && !sockwouldblock(sockerrno)) {
+	if (sendto(request->fd, (void *)request->buf, request->len, request->flags, &request->dest_addr.sa, SALEN(request->dest_addr.sa)) < 0 && !sockwouldblock(sockerrno)) {
 		char* hostname = sockaddr2hostname(&request->dest_addr);
 		logger(DEBUG_TRAFFIC, LOG_WARNING, "Error sending packet to %s: %s", hostname, sockstrerror(sockerrno));
 		free(hostname);

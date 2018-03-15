@@ -112,7 +112,7 @@ extern "C" {
 #define TIME_UTC 1
 #define _TTHREAD_EMULATE_TIMESPEC_GET_
 
-#if defined(_TTHREAD_WIN32_)
+#if defined(_TTHREAD_WIN32_) && !defined(__MINGW32__)
 struct _tthread_timespec {
   time_t tv_sec;
   long   tv_nsec;
