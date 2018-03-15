@@ -23,23 +23,31 @@
 #include <windows.h>
 #include <winioctl.h>
 
+#include "../async_pool.h"
 #include "../conf.h"
 #include "../device.h"
 #include "../logger.h"
 #include "../names.h"
 #include "../net.h"
 #include "../route.h"
+#include "../tinycthread.h"
 #include "../utils.h"
 #include "../xalloc.h"
 
 #include "common.h"
 
+#define ASYNC_DEVICE_QUEUE_LENGTH 128
+
+async_pool_t *device_read_pool;
 int device_fd = -1;
+static bool active;
+static thrd_t thrd;
 static HANDLE device_handle = INVALID_HANDLE_VALUE;
+static HANDLE device_event = INVALID_HANDLE_VALUE;
 static io_t device_read_io;
 static OVERLAPPED device_read_overlapped;
 static OVERLAPPED device_write_overlapped;
-static vpn_packet_t device_read_packet;
+static vpn_packet_t *device_read_packet;
 static vpn_packet_t device_write_packet;
 char *device = NULL;
 char *iface = NULL;
@@ -47,48 +55,52 @@ static const char *device_info = "Windows tap device";
 
 extern char *myport;
 
-static void device_issue_read() {
-	int status;
+/* Version of handle_device_data that uses a manually triggered event. */
+static void mingw_handle_device_data(void *data, int flags) {
+	vpn_packet_t *packet;
 
-	for(;;) {
-		ResetEvent(device_read_overlapped.hEvent);
+	ResetEvent(device_event);
 
-		DWORD len;
-		status = ReadFile(device_handle, (void *)device_read_packet.data, MTU, &len, &device_read_overlapped);
+	while((packet = async_pool_ctail(device_read_pool))) {
+		logger(DEBUG_TRAFFIC, LOG_DEBUG, "Got a packet");
 
-		if(!status) {
-			if(GetLastError() != ERROR_IO_PENDING)
-				logger(DEBUG_ALWAYS, LOG_ERR, "Error while reading from %s %s: %s", device_info,
-				       device, strerror(errno));
-
-			break;
+		if(packet->len != 0) {
+			route(myself, packet);
 		}
 
-		device_read_packet.len = len;
-		device_read_packet.priority = 0;
-		route(myself, &device_read_packet);
+		async_pool_consume(device_read_pool, packet);
 	}
 }
 
-static void device_handle_read(void *data, int flags) {
-	DWORD len;
+static int read_thread(void *arg) {
+	while(active) {
+		DWORD len;
 
-	if(!GetOverlappedResult(device_handle, &device_read_overlapped, &len, FALSE)) {
-		logger(DEBUG_ALWAYS, LOG_ERR, "Error getting read result from %s %s: %s", device_info,
-		       device, strerror(errno));
+		device_read_packet = async_pool_get(device_read_pool);
+		device_read_packet->offset = DEFAULT_PACKET_OFFSET;
+		device_read_packet->priority = 0;
 
-		if(GetLastError() != ERROR_IO_INCOMPLETE) {
-			/* Must reset event or it will keep firing. */
-			ResetEvent(device_read_overlapped.hEvent);
+		ResetEvent(device_read_overlapped.hEvent);
+
+		if(!ReadFile(device_handle, DATA(device_read_packet), MTU, &len, &device_read_overlapped)) {
+			if(GetLastError() == ERROR_IO_PENDING) {
+				if(!GetOverlappedResult(device_handle, &device_read_overlapped, &len, TRUE)) {
+					logger(DEBUG_ALWAYS, LOG_ERR, "Error getting read result from %s %s: %s", device_info, device, strerror(errno));
+					len = 0;
+				}
+			} else {
+				logger(DEBUG_ALWAYS, LOG_ERR, "Error while reading from %s %s: %s", device_info, device, strerror(errno));
+				len = 0;
+			}
 		}
 
-		return;
+		device_read_packet->len = len;
+		async_pool_put(device_read_pool, device_read_packet);
+		device_read_packet = NULL;
+		SetEvent(device_event);
 	}
 
-	device_read_packet.len = len;
-	device_read_packet.priority = 0;
-	route(myself, &device_read_packet);
-	device_issue_read();
+	return 0;
 }
 
 static bool setup_device(void) {
@@ -104,6 +116,8 @@ static bool setup_device(void) {
 	bool found = false;
 
 	int err;
+
+	device_read_pool = async_pool_alloc(ASYNC_DEVICE_QUEUE_LENGTH, sizeof(vpn_packet_t), NULL);
 
 	get_config_string(lookup_config(config_tree, "Device"), &device);
 	get_config_string(lookup_config(config_tree, "Interface"), &iface);
@@ -235,6 +249,8 @@ static bool setup_device(void) {
 	device_read_overlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 	device_write_overlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 
+	device_event = CreateEvent(NULL, TRUE, FALSE, NULL);
+
 	return true;
 }
 
@@ -245,10 +261,16 @@ static void enable_device(void) {
 	DWORD len;
 	DeviceIoControl(device_handle, TAP_IOCTL_SET_MEDIA_STATUS, &status, sizeof(status), &status, sizeof(status), &len, NULL);
 
-	/* We don't use the write event directly, but GetOverlappedResult() does, internally. */
+	/* XXX - belongs in setup function but we need read_thread to wait until enabled and handle disabling */
+	active = true;
 
-	io_add_event(&device_read_io, device_handle_read, NULL, device_read_overlapped.hEvent);
-	device_issue_read();
+	if(thrd_create(&thrd, read_thread, NULL) != thrd_success) {
+		logger(DEBUG_ALWAYS, LOG_ERR, "Could not create tap thread from %s: %s", device, strerror(errno));
+		active = false;
+		/* XXX - fatal error */
+	}
+
+	io_add_event(&device_read_io, mingw_handle_device_data, NULL, device_event);
 }
 
 static void disable_device(void) {
@@ -265,6 +287,13 @@ static void disable_device(void) {
 	   especially when combined with other events such as the computer going to sleep - cases
 	   were observed where the GetOverlappedResult() would just block indefinitely and never
 	   return in that case. */
+
+	/* Stop the TAP reader thread. */
+	/* XXX - this is probably not sufficient */
+	if(active) {
+		active = false;
+		thrd_join(thrd, NULL);
+	}
 }
 
 static void close_device(void) {
@@ -276,8 +305,12 @@ static void close_device(void) {
 
 	DWORD len;
 
-	if(!GetOverlappedResult(device_handle, &device_read_overlapped, &len, TRUE) && GetLastError() != ERROR_OPERATION_ABORTED) {
-		logger(DEBUG_ALWAYS, LOG_ERR, "Could not wait for %s %s read to cancel: %s", device_info, device, winerror(GetLastError()));
+	if(device_read_packet) {
+		if(!GetOverlappedResult(device_handle, &device_read_overlapped, &len, TRUE) && GetLastError() != ERROR_OPERATION_ABORTED) {
+			logger(DEBUG_ALWAYS, LOG_ERR, "Could not wait for %s %s read to cancel: %s", device_info, device, winerror(GetLastError()));
+		}
+
+		device_read_packet = NULL;
 	}
 
 	if(device_write_packet.len > 0 && !GetOverlappedResult(device_handle, &device_write_overlapped, &len, TRUE) && GetLastError() != ERROR_OPERATION_ABORTED) {
@@ -287,20 +320,27 @@ static void close_device(void) {
 	device_write_packet.len = 0;
 
 	CloseHandle(device_read_overlapped.hEvent);
+	device_read_overlapped.hEvent = INVALID_HANDLE_VALUE;
 	CloseHandle(device_write_overlapped.hEvent);
-
+	device_write_overlapped.hEvent = INVALID_HANDLE_VALUE;
 	CloseHandle(device_handle);
 	device_handle = INVALID_HANDLE_VALUE;
+	CloseHandle(device_event);
+	device_event = INVALID_HANDLE_VALUE;
+
+	if(active) {
+		active = false;
+		thrd_join(thrd, NULL);
+	}
+
+	async_pool_free(device_read_pool);
+	device_read_pool = NULL;
 
 	free(device);
 	device = NULL;
 	free(iface);
 	iface = NULL;
 	device_info = NULL;
-}
-
-static bool read_packet(vpn_packet_t *packet) {
-	return false;
 }
 
 static bool write_packet(vpn_packet_t *packet) {
@@ -346,7 +386,7 @@ static bool write_packet(vpn_packet_t *packet) {
 const devops_t os_devops = {
 	.setup = setup_device,
 	.close = close_device,
-	.read = read_packet,
+	.read = NULL,
 	.write = write_packet,
 	.enable = enable_device,
 	.disable = disable_device,
