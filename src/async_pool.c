@@ -145,5 +145,7 @@ void async_pool_consume(async_pool_t *pool, void *buf) {
 	assert(!nothing_to_consume(pool) && pool->bufs[pool->ctail] == buf);
 	pool->ctail++;
 	pool->ctail %= pool->nmemb;
+	cnd_signal(&pool->cnd);
+
 	assert(mtx_unlock(&pool->mtx) == thrd_success);
 }
