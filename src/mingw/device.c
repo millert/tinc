@@ -37,6 +37,7 @@
 #include "common.h"
 
 #define ASYNC_DEVICE_QUEUE_LENGTH 128
+#define OVERLAPPED_EVENT_MAX 32
 
 async_pool_t *device_read_pool;
 int device_fd = -1;
@@ -45,10 +46,10 @@ static thrd_t thrd;
 static HANDLE device_handle = INVALID_HANDLE_VALUE;
 static HANDLE device_event = INVALID_HANDLE_VALUE;
 static io_t device_read_io;
-static OVERLAPPED device_read_overlapped;
-static OVERLAPPED device_write_overlapped;
 static vpn_packet_t *device_read_packet;
-static vpn_packet_t device_write_packet;
+static OVERLAPPED device_read_overlapped;
+static vpn_packet_t device_write_packet[OVERLAPPED_EVENT_MAX];
+static OVERLAPPED device_write_overlapped[OVERLAPPED_EVENT_MAX];
 char *device = NULL;
 char *iface = NULL;
 static const char *device_info = "Windows tap device";
@@ -247,7 +248,9 @@ static bool setup_device(void) {
 	logger(DEBUG_ALWAYS, LOG_INFO, "%s (%s) is a %s", device, iface, device_info);
 
 	device_read_overlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-	device_write_overlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+	for(int i = 0; i < OVERLAPPED_EVENT_MAX; i++) {
+		device_write_overlapped[i].hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+	}
 
 	device_event = CreateEvent(NULL, TRUE, FALSE, NULL);
 
@@ -313,16 +316,17 @@ static void close_device(void) {
 		device_read_packet = NULL;
 	}
 
-	if(device_write_packet.len > 0 && !GetOverlappedResult(device_handle, &device_write_overlapped, &len, TRUE) && GetLastError() != ERROR_OPERATION_ABORTED) {
-		logger(DEBUG_ALWAYS, LOG_ERR, "Could not wait for %s %s write to cancel: %s", device_info, device, winerror(GetLastError()));
+	for(int i = 0; i < OVERLAPPED_EVENT_MAX; i++) {
+		if(device_write_packet[i].len > 0 && !GetOverlappedResult(device_handle, &device_write_overlapped[i], &len, TRUE) && GetLastError() != ERROR_OPERATION_ABORTED) {
+			logger(DEBUG_ALWAYS, LOG_ERR, "Could not wait for %s %s write to cancel: %s", device_info, device, winerror(GetLastError()));
+		}
+		device_write_packet[i].len = 0;
+		CloseHandle(device_write_overlapped[i].hEvent);
+		device_write_overlapped[i].hEvent = INVALID_HANDLE_VALUE;
 	}
-
-	device_write_packet.len = 0;
 
 	CloseHandle(device_read_overlapped.hEvent);
 	device_read_overlapped.hEvent = INVALID_HANDLE_VALUE;
-	CloseHandle(device_write_overlapped.hEvent);
-	device_write_overlapped.hEvent = INVALID_HANDLE_VALUE;
 	CloseHandle(device_handle);
 	device_handle = INVALID_HANDLE_VALUE;
 	CloseHandle(device_event);
@@ -345,40 +349,49 @@ static void close_device(void) {
 
 static bool write_packet(vpn_packet_t *packet) {
 	DWORD outlen;
+	static int start;
+	int i = start;
 
 	logger(DEBUG_TRAFFIC, LOG_DEBUG, "Writing packet of %d bytes to %s",
 	       packet->len, device_info);
 
-	if(device_write_packet.len > 0) {
-		/* Make sure the previous write operation is finished before we start the next one;
-		   otherwise we end up with multiple write ops referencing the same OVERLAPPED structure,
-		   which according to MSDN is a no-no. */
+	for(;;) {
+		i = (i + 1) % OVERLAPPED_EVENT_MAX;
+		if(i == start) {
+			logger(DEBUG_ALWAYS, LOG_ERR, "Previous overlapped write to %s %s still in progress", device_info, device);
+			break;
+		}
 
-		if(!GetOverlappedResult(device_handle, &device_write_overlapped, &outlen, FALSE)) {
-			if(GetLastError() != ERROR_IO_INCOMPLETE) {
+		if(device_write_packet[i].len > 0) {
+			/* Make sure the previous write operation is finished before we start the next one;
+			   otherwise we end up with multiple write ops referencing the same OVERLAPPED structure,
+			   which according to MSDN is a no-no. */
+
+			if(!GetOverlappedResult(device_handle, &device_write_overlapped[i], &outlen, FALSE)) {
+				if(GetLastError() == ERROR_IO_INCOMPLETE) {
+					continue;
+				}
 				logger(DEBUG_ALWAYS, LOG_ERR, "Error completing previously queued write to %s %s: %s", device_info, device, winerror(GetLastError()));
-			} else {
-				logger(DEBUG_TRAFFIC, LOG_ERR, "Previous overlapped write to %s %s still in progress", device_info, device);
-				// drop this packet
-				return true;
 			}
 		}
+
+		/* Copy the packet, since the write operation might still be ongoing after we return. */
+
+		memcpy(&device_write_packet[i], packet, sizeof(*packet));
+
+		ResetEvent(device_write_overlapped[i].hEvent);
+
+		if(WriteFile(device_handle, DATA(&device_write_packet[i]), device_write_packet[i].len, &outlen, &device_write_overlapped[i])) {
+			// Write was completed immediately.
+			device_write_packet[i].len = 0;
+		} else if(GetLastError() != ERROR_IO_PENDING) {
+			logger(DEBUG_ALWAYS, LOG_ERR, "Error while writing to %s %s: %s", device_info, device, winerror(GetLastError()));
+			device_write_packet[i].len = 0;
+			return false;
+		}
+		break;
 	}
-
-	/* Copy the packet, since the write operation might still be ongoing after we return. */
-
-	memcpy(&device_write_packet, packet, sizeof(*packet));
-
-	ResetEvent(device_write_overlapped.hEvent);
-
-	if(WriteFile(device_handle, DATA(&device_write_packet), device_write_packet.len, &outlen, &device_write_overlapped)) {
-		// Write was completed immediately.
-		device_write_packet.len = 0;
-	} else if(GetLastError() != ERROR_IO_PENDING) {
-		logger(DEBUG_ALWAYS, LOG_ERR, "Error while writing to %s %s: %s", device_info, device, winerror(GetLastError()));
-		device_write_packet.len = 0;
-		return false;
-	}
+	start = i;
 
 	return true;
 }
