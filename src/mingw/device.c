@@ -45,6 +45,7 @@ static bool active;
 static thrd_t thrd;
 static HANDLE device_handle = INVALID_HANDLE_VALUE;
 static HANDLE device_event = INVALID_HANDLE_VALUE;
+static HANDLE read_thread_event = INVALID_HANDLE_VALUE;
 static io_t device_read_io;
 static vpn_packet_t *device_read_packet;
 static OVERLAPPED device_read_overlapped;
@@ -74,6 +75,10 @@ static void mingw_handle_device_data(void *data, int flags) {
 }
 
 static int read_thread(void *arg) {
+	/* Thread is created in setup_device but enabled in enable_device. */
+	WSAWaitForMultipleEvents(1, &read_thread_event, FALSE, WSA_INFINITE, FALSE);
+	ResetEvent(read_thread_event);
+
 	while(active) {
 		DWORD len;
 
@@ -88,10 +93,12 @@ static int read_thread(void *arg) {
 				if(!GetOverlappedResult(device_handle, &device_read_overlapped, &len, TRUE)) {
 					logger(DEBUG_ALWAYS, LOG_ERR, "Error getting read result from %s %s: %s", device_info, device, strerror(errno));
 					len = 0;
+					active = false;
 				}
 			} else {
 				logger(DEBUG_ALWAYS, LOG_ERR, "Error while reading from %s %s: %s", device_info, device, strerror(errno));
 				len = 0;
+				active = false;
 			}
 		}
 
@@ -253,6 +260,13 @@ static bool setup_device(void) {
 	}
 
 	device_event = CreateEvent(NULL, TRUE, FALSE, NULL);
+	read_thread_event = CreateEvent(NULL, TRUE, FALSE, NULL);
+
+	/* Thread is activated by enable_device() */
+	if(thrd_create(&thrd, read_thread, NULL) != thrd_success) {
+		logger(DEBUG_ALWAYS, LOG_ERR, "Could not create tap thread from %s: %s", device, strerror(errno));
+		return false;
+	}
 
 	return true;
 }
@@ -262,15 +276,13 @@ static void enable_device(void) {
 
 	ULONG status = 1;
 	DWORD len;
-	DeviceIoControl(device_handle, TAP_IOCTL_SET_MEDIA_STATUS, &status, sizeof(status), &status, sizeof(status), &len, NULL);
+	if(!DeviceIoControl(device_handle, TAP_IOCTL_SET_MEDIA_STATUS, &status, sizeof(status), &status, sizeof(status), &len, NULL)) {
+		logger(DEBUG_ALWAYS, LOG_ERR, "Could not set media status for Windows tap device %s (%s): %s", device, iface, winerror(GetLastError()));
+	}
 
-	/* XXX - belongs in setup function but we need read_thread to wait until enabled and handle disabling */
-	active = true;
-
-	if(thrd_create(&thrd, read_thread, NULL) != thrd_success) {
-		logger(DEBUG_ALWAYS, LOG_ERR, "Could not create tap thread from %s: %s", device, strerror(errno));
-		active = false;
-		/* XXX - fatal error */
+	if(!active) {
+		active = true;
+		SetEvent(read_thread_event);
 	}
 
 	io_add_event(&device_read_io, mingw_handle_device_data, NULL, device_event);
@@ -290,13 +302,6 @@ static void disable_device(void) {
 	   especially when combined with other events such as the computer going to sleep - cases
 	   were observed where the GetOverlappedResult() would just block indefinitely and never
 	   return in that case. */
-
-	/* Stop the TAP reader thread. */
-	/* XXX - this is probably not sufficient */
-	if(active) {
-		active = false;
-		thrd_join(thrd, NULL);
-	}
 }
 
 static void close_device(void) {
