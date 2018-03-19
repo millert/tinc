@@ -54,10 +54,10 @@ static int async_pool_thread(void *arg) {
 		assert(pool->bufs[pool->ctail]);
 		pool->consume(pool->bufs[pool->ctail++]);
 		pool->ctail %= pool->nmemb;
-		cnd_signal(&pool->cnd);
+		cnd_broadcast(&pool->cnd);
 	}
 
-	cnd_signal(&pool->cnd);
+	cnd_broadcast(&pool->cnd);
 	assert(mtx_unlock(&pool->mtx) == thrd_success);
 	return 0;
 }
@@ -91,7 +91,7 @@ void async_pool_free(async_pool_t *pool) {
 
 	if (pool->consume) {
 		pool->active = false;
-		cnd_signal(&pool->cnd);
+		cnd_broadcast(&pool->cnd);
 		cnd_wait(&pool->cnd, &pool->mtx);
 	}
 
@@ -126,7 +126,7 @@ void async_pool_put(async_pool_t *pool, void *buf) {
 	assert(!pool->bufs[pool->tail]);
 	pool->bufs[pool->tail++] = buf;
 	pool->tail %= pool->nmemb;
-	cnd_signal(&pool->cnd);
+	cnd_broadcast(&pool->cnd);
 
 	assert(mtx_unlock(&pool->mtx) == thrd_success);
 }
@@ -145,7 +145,7 @@ void async_pool_consume(async_pool_t *pool, void *buf) {
 	assert(!nothing_to_consume(pool) && pool->bufs[pool->ctail] == buf);
 	pool->ctail++;
 	pool->ctail %= pool->nmemb;
-	cnd_signal(&pool->cnd);
+	cnd_broadcast(&pool->cnd);
 
 	assert(mtx_unlock(&pool->mtx) == thrd_success);
 }
