@@ -60,6 +60,7 @@ extern char *myport;
 /* Version of handle_device_data that uses a manually triggered event. */
 static void mingw_handle_device_data(void *data, int flags) {
 	vpn_packet_t *packet;
+	int count = 0;
 
 	ResetEvent(device_event);
 
@@ -71,6 +72,15 @@ static void mingw_handle_device_data(void *data, int flags) {
 		}
 
 		async_pool_consume(device_read_pool, packet);
+
+		/*
+		 * Yield to the main event loop after we've consumed
+		 * 32 packets to avoid starving other events.
+		 */
+		if (++count >= OVERLAPPED_EVENT_MAX) {
+		    SetEvent(device_event);
+		    break;
+		}
 	}
 }
 
