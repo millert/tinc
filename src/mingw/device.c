@@ -85,8 +85,11 @@ static void mingw_handle_device_data(void *data, int flags) {
 }
 
 static int read_thread(void *arg) {
-	/* Thread is created in setup_device but enabled in enable_device. */
-	WSAWaitForMultipleEvents(1, &read_thread_event, FALSE, WSA_INFINITE, FALSE);
+	/* read_thread_event is used to syncronize device enable and close. */
+	WSAEVENT events[2] = { read_thread_event, device_read_overlapped.hEvent };
+
+	/* Wait for enable_device() */
+	WSAWaitForMultipleEvents(1, events, FALSE, WSA_INFINITE, FALSE);
 	ResetEvent(read_thread_event);
 
 	while(active) {
@@ -100,7 +103,20 @@ static int read_thread(void *arg) {
 
 		if(!ReadFile(device_handle, DATA(device_read_packet), MTU, &len, &device_read_overlapped)) {
 			if(GetLastError() == ERROR_IO_PENDING) {
-				if(!GetOverlappedResult(device_handle, &device_read_overlapped, &len, TRUE)) {
+				DWORD result = WSAWaitForMultipleEvents(2, events, FALSE, WSA_INFINITE, FALSE);
+				if(result == WSA_WAIT_EVENT_0) {
+					/* read_thread_event, device closing */
+					ResetEvent(read_thread_event);
+					continue;
+				}
+
+				if(result != WSA_WAIT_EVENT_0 + 1) {
+					logger(DEBUG_ALWAYS, LOG_ERR, "Error waiting for events from %s %s: %s", device_info, device, strerror(errno));
+					len = 0;
+					active = false;
+				}
+
+				if(!GetOverlappedResult(device_handle, &device_read_overlapped, &len, FALSE)) {
 					logger(DEBUG_ALWAYS, LOG_ERR, "Error getting read result from %s %s: %s", device_info, device, strerror(errno));
 					len = 0;
 					active = false;
@@ -317,6 +333,13 @@ static void disable_device(void) {
 static void close_device(void) {
 	CancelIo(device_handle);
 
+	if(active) {
+		/* Tell read_thread to exit */
+		active = false;
+		SetEvent(read_thread_event);
+		thrd_join(thrd, NULL);
+	}
+
 	/* According to MSDN, CancelIo() does not necessarily wait for the operation to complete.
 	   To prevent race conditions, make sure the operation is complete
 	   before we close the event it's referencing. */
@@ -328,6 +351,7 @@ static void close_device(void) {
 			logger(DEBUG_ALWAYS, LOG_ERR, "Could not wait for %s %s read to cancel: %s", device_info, device, winerror(GetLastError()));
 		}
 
+		async_pool_put(device_read_pool, device_read_packet);
 		device_read_packet = NULL;
 	}
 
@@ -346,11 +370,8 @@ static void close_device(void) {
 	device_handle = INVALID_HANDLE_VALUE;
 	CloseHandle(device_event);
 	device_event = INVALID_HANDLE_VALUE;
-
-	if(active) {
-		active = false;
-		thrd_join(thrd, NULL);
-	}
+	CloseHandle(read_thread_event);
+	read_thread_event = INVALID_HANDLE_VALUE;
 
 	async_pool_free(device_read_pool);
 	device_read_pool = NULL;
