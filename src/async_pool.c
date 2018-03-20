@@ -61,10 +61,9 @@ static int async_pool_thread(void *arg) {
 		assert(mtx_lock(&pool->mtx) == thrd_success);
 		pool->ctail++;
 		pool->ctail %= pool->nmemb;
-		cnd_broadcast(&pool->cnd);
+		assert(cnd_broadcast(&pool->cnd) == thrd_success);
 	}
 
-	cnd_broadcast(&pool->cnd);
 	assert(mtx_unlock(&pool->mtx) == thrd_success);
 	return 0;
 }
@@ -94,12 +93,12 @@ void async_pool_free(async_pool_t *pool) {
 		return;
 	}
 
-	assert(mtx_lock(&pool->mtx) == thrd_success);
-
 	if (pool->consume) {
+		assert(mtx_lock(&pool->mtx) == thrd_success);
 		pool->active = false;
-		cnd_broadcast(&pool->cnd);
-		cnd_wait(&pool->cnd, &pool->mtx);
+		assert(cnd_broadcast(&pool->cnd) == thrd_success);
+		assert(mtx_unlock(&pool->mtx) == thrd_success);
+		thrd_join(pool->thrd, NULL);
 	}
 
 	for(size_t i = 0; i < pool->nmemb; i++) {
@@ -107,7 +106,8 @@ void async_pool_free(async_pool_t *pool) {
 		free(pool->bufs[i]);
 	}
 
-	assert(mtx_unlock(&pool->mtx) == thrd_success);
+	cnd_destroy(&pool->cnd);
+	mtx_destroy(&pool->mtx);
 	free(pool);
 }
 
@@ -133,7 +133,7 @@ void async_pool_put(async_pool_t *pool, void *buf) {
 	assert(!pool->bufs[pool->tail]);
 	pool->bufs[pool->tail++] = buf;
 	pool->tail %= pool->nmemb;
-	cnd_broadcast(&pool->cnd);
+	assert(cnd_broadcast(&pool->cnd) == thrd_success);
 
 	assert(mtx_unlock(&pool->mtx) == thrd_success);
 }
@@ -152,7 +152,7 @@ void async_pool_consume(async_pool_t *pool, void *buf) {
 	assert(!nothing_to_consume(pool) && pool->bufs[pool->ctail] == buf);
 	pool->ctail++;
 	pool->ctail %= pool->nmemb;
-	cnd_broadcast(&pool->cnd);
+	assert(cnd_broadcast(&pool->cnd) == thrd_success);
 
 	assert(mtx_unlock(&pool->mtx) == thrd_success);
 }
