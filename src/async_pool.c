@@ -51,8 +51,15 @@ static int async_pool_thread(void *arg) {
 			break;
 		}
 
-		assert(pool->bufs[pool->ctail]);
-		pool->consume(pool->bufs[pool->ctail++]);
+		void *buf = pool->bufs[pool->ctail];
+		assert(mtx_unlock(&pool->mtx) == thrd_success);
+
+		/* The consumer is run without the mutex. */
+		assert(buf != NULL);
+		pool->consume(buf);
+
+		assert(mtx_lock(&pool->mtx) == thrd_success);
+		pool->ctail++;
 		pool->ctail %= pool->nmemb;
 		cnd_broadcast(&pool->cnd);
 	}
