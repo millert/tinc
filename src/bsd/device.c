@@ -243,21 +243,19 @@ static bool write_packet(vpn_packet_t *packet) {
 }
 
 static int read_thread(void *arg) {
-	fd_set readfds;
+	while(active) {
+		fd_set readfds;
 
-	FD_ZERO(&readfds);
-	FD_SET(real_fd, &readfds);
+		FD_ZERO(&readfds);
+		FD_SET(real_fd, &readfds);
 
-	/* Wait for TUN/TAP to be ready or we get EIO on macOS. */
-	for(;;) {
 		int n = select(real_fd + 1, &readfds, NULL, NULL, NULL);
-
-		if(n != -1 || errno != EINTR) {
+		if(n == -1) {
+			if(errno == EINTR)
+				continue;
 			break;
 		}
-	}
 
-	while(active) {
 		vpn_packet_t *packet = async_pool_get(device_read_pool);
 
 		packet->offset = DEFAULT_PACKET_OFFSET;
@@ -578,6 +576,9 @@ static bool setup_device(void) {
 }
 
 static void close_device(void) {
+	int need_join = active;
+
+	active = false;
 	switch(device_type) {
 #ifdef ENABLE_TUNEMU
 
@@ -597,8 +598,7 @@ static void close_device(void) {
 	device_pipe[0] = -1;
 	device_pipe[1] = -1;
 
-	if(active) {
-		active = false;
+	if(need_join) {
 		thrd_join(thrd, NULL);
 	}
 
