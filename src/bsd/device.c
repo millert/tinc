@@ -276,21 +276,22 @@ static int read_thread(void *arg) {
 }
 
 #ifdef HAVE_NET_IF_UTUN_H
-static bool setup_utun(void) {
-	real_fd = socket(PF_SYSTEM, SOCK_DGRAM, SYSPROTO_CONTROL);
+static int setup_utun(void) {
+	int fd = socket(PF_SYSTEM, SOCK_DGRAM, SYSPROTO_CONTROL);
 
-	if(real_fd == -1) {
+	if(fd == -1) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "Could not open PF_SYSTEM socket: %s\n", strerror(errno));
-		return false;
+		return -1;
 	}
 
 	struct ctl_info info = {};
 
 	strlcpy(info.ctl_name, UTUN_CONTROL_NAME, sizeof(info.ctl_name));
 
-	if(ioctl(real_fd, CTLIOCGINFO, &info) == -1) {
+	if(ioctl(fd, CTLIOCGINFO, &info) == -1) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "ioctl(CTLIOCGINFO) failed: %s", strerror(errno));
-		return false;
+		close(fd);
+		return -1;
 	}
 
 	int unit = -1;
@@ -312,23 +313,22 @@ static bool setup_utun(void) {
 		.sc_unit = unit + 1,
 	};
 
-	if(connect(real_fd, (struct sockaddr *)&sc, sizeof(sc)) == -1) {
+	if(connect(fd, (struct sockaddr *)&sc, sizeof(sc)) == -1) {
 		logger(DEBUG_ALWAYS, LOG_ERR, "Could not connect utun socket: %s\n", strerror(errno));
-		return false;
+		close(fd);
+		return -1;
 	}
 
 	char name[64] = "";
 	socklen_t len = sizeof(name);
 
-	if(getsockopt(real_fd, SYSPROTO_CONTROL, UTUN_OPT_IFNAME, name, &len)) {
+	if(getsockopt(fd, SYSPROTO_CONTROL, UTUN_OPT_IFNAME, name, &len)) {
 		iface = xstrdup(device);
 	} else {
 		iface = xstrdup(name);
 	}
 
-	logger(DEBUG_ALWAYS, LOG_INFO, "%s is a %s", device, device_info);
-
-	return true;
+	return fd;
 }
 #endif
 
@@ -427,7 +427,8 @@ static bool setup_device(void) {
 #ifdef HAVE_NET_IF_UTUN_H
 
 	case DEVICE_TYPE_UTUN:
-		return setup_utun();
+		real_fd = setup_utun();
+		break;
 #endif
 
 	default:
@@ -443,29 +444,31 @@ static bool setup_device(void) {
 	fcntl(real_fd, F_SETFD, FD_CLOEXEC);
 #endif
 
-	// Guess what the corresponding interface is called
+	if(device_type != DEVICE_TYPE_UTUN) {
+		// Guess what the corresponding interface is called
 
-	char *realname = NULL;
+		char *realname = NULL;
 
 #if defined(HAVE_FDEVNAME)
-	realname = fdevname(real_fd);
+		realname = fdevname(real_fd);
 #elif defined(HAVE_DEVNAME)
-	struct stat buf;
+		struct stat buf;
 
-	if(!fstat(real_fd, &buf)) {
-		realname = devname(buf.st_rdev, S_IFCHR);
-	}
+		if(!fstat(real_fd, &buf)) {
+			realname = devname(buf.st_rdev, S_IFCHR);
+		}
 
 #endif
 
-	if(!realname) {
-		realname = device;
-	}
+		if(!realname) {
+			realname = device;
+		}
 
-	if(!get_config_string(lookup_config(config_tree, "Interface"), &iface)) {
-		iface = xstrdup(strrchr(realname, '/') ? strrchr(realname, '/') + 1 : realname);
-	} else if(strcmp(iface, strrchr(realname, '/') ? strrchr(realname, '/') + 1 : realname)) {
-		logger(DEBUG_ALWAYS, LOG_WARNING, "Warning: Interface does not match Device. $INTERFACE might be set incorrectly.");
+		if(!get_config_string(lookup_config(config_tree, "Interface"), &iface)) {
+			iface = xstrdup(strrchr(realname, '/') ? strrchr(realname, '/') + 1 : realname);
+		} else if(strcmp(iface, strrchr(realname, '/') ? strrchr(realname, '/') + 1 : realname)) {
+			logger(DEBUG_ALWAYS, LOG_WARNING, "Warning: Interface does not match Device. $INTERFACE might be set incorrectly.");
+		}
 	}
 
 	// Configure the device as best as we can
@@ -543,6 +546,12 @@ static bool setup_device(void) {
 
 	case DEVICE_TYPE_TUNEMU:
 		device_info = "BSD tunemu device";
+		break;
+#endif
+#ifdef HAVE_NET_IF_UTUN_H
+
+	case DEVICE_TYPE_UTUN:
+		/* already configured by setup_utun() */
 		break;
 #endif
 	}
